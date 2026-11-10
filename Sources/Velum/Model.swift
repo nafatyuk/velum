@@ -3,7 +3,8 @@ import Combine
 
 /// Ordered by how much attention it needs; the menu bar icon shows the worst one.
 enum SyncState: Int, Comparable {
-    case ok, syncing, offline, paused, warning, notRunning, error
+    /// `unknown`: Velum has no evidence either way. Shown as a plain cloud, never as "Up to date".
+    case ok, unknown, syncing, offline, paused, warning, notRunning, error
 
     static func < (a: SyncState, b: SyncState) -> Bool { a.rawValue < b.rawValue }
 
@@ -19,7 +20,9 @@ enum SyncState: Int, Comparable {
         let busy = ["syncing", "uploading", "downloading", "transferring", "processing", "looking for changes",
                     "moving", "signing in"]
         if busy.contains(where: s.contains) { return .syncing }
-        return .ok
+        let healthy = ["synced", "up to date", "online"]
+        if healthy.contains(where: s.contains) { return .ok }
+        return .unknown   // wording we don't recognise (another language, a new OneDrive message)
     }
 }
 
@@ -29,6 +32,8 @@ struct AccountStatus: Identifiable, Equatable {
     let state: SyncState
     let headline: String
     let detail: String
+    /// Where the headline came from: "From OneDrive", "Live from macOS", "OneDrive report, 1:45 PM".
+    let source: String
     let pid: pid_t?
     let isLive: Bool
     let lastActivity: Date?
@@ -51,10 +56,10 @@ final class Collector: @unchecked Sendable {
     private var pidKeys: [pid_t: Set<String>] = [:]
     private var diagCache: [String: (stamp: Date?, value: Diagnostics?)] = [:]
     private var activityCache: [String: (stamp: Date?, value: [Activity])] = [:]
-    private var uploadCache: [String: (stamp: Date?, value: [PendingUpload])] = [:]
     private let defaults = UserDefaults.standard
 
-    func collect(force: Bool, transfers: [String: TransferInfo] = [:]) -> Snapshot {
+    func collect(force: Bool, transfers: [String: TransferInfo] = [:],
+                 uploads: (watching: Set<String>, accounts: [String: UploadSummary]) = ([], [:])) -> Snapshot {
         let now = Date()
         if force || configs.isEmpty || now.timeIntervalSince(lastDiscovery) > 60 {
             configs = OneDriveFiles.discoverAccounts()
@@ -99,7 +104,8 @@ final class Collector: @unchecked Sendable {
 
             snapshot.accounts.append(Self.status(
                 config: config, name: name, running: running, pid: pid, live: liveItem,
-                transfer: transfers[config.key], uploads: uploads(config.key, force: force),
+                transfer: transfers[config.key], uploads: uploads.accounts[config.key],
+                watchingUploads: uploads.watching.contains(config.key),
                 diag: diag, lastActivity: history.first?.date, now: now
             ))
         }
@@ -108,16 +114,27 @@ final class Collector: @unchecked Sendable {
         return snapshot
     }
 
-    /// Status sources, most authoritative first: OneDrive's own icon text (only readable while its icon is
-    /// visible), live downloads from File Provider, OneDrive's upload queue, then its hourly report.
+    /// Status sources, most authoritative first: OneDrive's own icon text (only readable while its icons
+    /// exist), live File Provider state (changed files' upload flags and transfer progress), then
+    /// OneDrive's hourly report. With no evidence the state is `.unknown`, never "Up to date".
     static func status(config: AccountConfig, name: String, running: Bool, pid: pid_t?, live: LiveItem?,
-                       transfer: TransferInfo?, uploads: [PendingUpload], diag: Diagnostics?,
-                       lastActivity: Date?, now: Date) -> AccountStatus {
-        var state = SyncState.ok
-        var headline = "Up to date"
-        var fromReport = false
-        let moving = transfer?.files ?? 0
-        let queued = uploads.count
+                       transfer: TransferInfo?, uploads: UploadSummary?, watchingUploads: Bool,
+                       diag: Diagnostics?, lastActivity: Date?, now: Date) -> AccountStatus {
+        var state = SyncState.unknown
+        var headline = "No status yet"
+        var source = ""
+        var extra: [String] = []
+
+        let failed = uploads?.failed ?? []
+        let uploading = max(uploads?.uploading ?? 0, transfer?.uploadingFiles ?? 0)
+        let downloading = transfer?.downloadingFiles ?? 0
+        let moving = uploading + downloading
+        // Direction-less per-file progress: OneDrive publishes two objects per uploaded file, so it only
+        // says "something is moving", never how many.
+        let unlabelled = (transfer?.otherFiles ?? 0) > 0
+        let waiting = uploads?.waiting ?? 0
+        let reportTime = diag.map { "OneDrive report, \(RelTime.clock($0.written))" } ?? ""
+        func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
 
         if !running {
             state = .notRunning
@@ -125,39 +142,61 @@ final class Collector: @unchecked Sendable {
         } else if let live, !live.status.isEmpty {
             state = SyncState.classify(live.status)
             headline = live.status
-        } else if moving + queued > 0 {
+            source = "From OneDrive"
+        } else if !failed.isEmpty {
+            state = .error
+            headline = failed.count == 1 ? "1 file can't upload" : "\(failed.count) files can't upload"
+            extra.append(failed[0])
+            source = "Live from macOS"
+        } else if moving > 0 {
             state = .syncing
-            if moving > 0 && queued > 0 {
-                headline = "Syncing \(moving + queued) files"
-            } else if queued == 1, let upload = uploads.first {
-                headline = "Uploading \(upload.name)"
-            } else if queued > 1 {
-                headline = "Uploading \(queued) files"
-            } else if let transfer {
-                headline = transfer.headline
+            if downloading == 0 {
+                headline = "Uploading \(files(uploading))"
+            } else if uploading == 0 {
+                headline = "Downloading \(files(downloading))"
+            } else {
+                headline = "Syncing \(files(moving))"
             }
+            if let bytes = transfer?.bytesText { extra.append(bytes) }
+            source = "Live from macOS"
+        } else if waiting > 0 {
+            // Community-documented code: 65536 = paused. Microsoft doesn't publish these.
+            let paused = diag?.progressState == 65536
+            state = paused ? .paused : .syncing
+            headline = paused ? "Paused, \(files(waiting)) waiting" : "Waiting to upload \(files(waiting))"
+            if let oldest = uploads?.oldestWaiting, now.timeIntervalSince(oldest) > 10 * 60 {
+                extra.append("waiting since \(RelTime.clock(oldest))")
+            }
+            source = "Live from macOS"
+        } else if unlabelled {
+            state = .syncing
+            headline = "Syncing changes"
+            source = "Live from macOS"
         } else if let code = diag?.progressState {
-            // Community-documented values from OneDrive's diagnostics report; Microsoft doesn't publish them.
-            fromReport = true
+            // Community-documented values from OneDrive's hourly diagnostics report.
             switch code {
-            case 65536: state = .paused; headline = "Paused"
-            case 8194: state = .offline; headline = "Not syncing"
-            case 1854: state = .error; headline = "Sync issue"
-            default: state = .ok; headline = "Up to date"
+            case 65536: state = .paused; headline = "Paused"; source = reportTime
+            case 8194: state = .offline; headline = "Not syncing"; source = reportTime
+            case 1854: state = .error; headline = "Sync issue"; source = reportTime
+            case 0, 16777216:
+                // A healthy report plus, when Velum is watching with no gaps, nothing pending right now.
+                state = .ok
+                headline = "Up to date"
+                let liveCoverage = watchingUploads && uploads?.coverageGap != true
+                source = liveCoverage ? "Nothing pending · \(reportTime)" : reportTime
+            default:
+                state = .unknown
+                headline = "Status unknown"
+                source = reportTime
             }
         }
 
-        var details: [String] = []
-        if running, live == nil, let oldest = uploads.compactMap(\.started).min(), now.timeIntervalSince(oldest) > 10 * 60 {
-            details.append("upload started \(RelTime.string(oldest, now: now))")
-        }
-        if running, let bytes = transfer?.bytesText, transfer?.isActive == true { details.append(bytes) }
-        if let last = lastActivity { details.append("Last activity \(RelTime.string(last, now: now))") }
-        if state == .ok, let d = diag, d.files > 0 { details.append("\(d.files.formatted()) files") }
-        if fromReport, state != .ok, let d = diag { details.append("as of \(RelTime.clock(d.written))") }
+        var details = extra
+        if !source.isEmpty { details.append(source) }
+        if let last = lastActivity { details.append("last activity \(RelTime.string(last, now: now))") }
 
         return AccountStatus(config: config, name: name, state: state, headline: headline,
-                             detail: details.joined(separator: " · "), pid: pid,
+                             detail: details.joined(separator: " · "), source: source, pid: pid,
                              isLive: live != nil, lastActivity: lastActivity)
     }
 
@@ -178,17 +217,6 @@ final class Collector: @unchecked Sendable {
         if !force, let cached = diagCache[key], cached.stamp == stamp { return cached.value }
         let value = OneDriveFiles.diagnostics(at: path)
         diagCache[key] = (stamp, value)
-        return value
-    }
-
-    private func uploads(_ key: String, force: Bool) -> [PendingUpload] {
-        let path = OneDriveFiles.uploadsPath(key)
-        let stamp = OneDriveFiles.modificationDate(path)
-        // OneDrive can leave a finished session in the file for hours, so only trust it while it's fresh.
-        guard let stamp, Date().timeIntervalSince(stamp) < 10 * 60 else { return [] }
-        if !force, let cached = uploadCache[key], cached.stamp == stamp { return cached.value }
-        let value = OneDriveFiles.pendingUploads(at: path)
-        uploadCache[key] = (stamp, value)
         return value
     }
 
@@ -214,6 +242,7 @@ final class Store: ObservableObject {
 
     private let collector = Collector()
     private let transfers = TransferMonitor()
+    private let uploadTracker = UploadTracker()
     private let queue = DispatchQueue(label: "Velum.collect", qos: .utility)
     private var timer: Timer?
     private var inFlight = false
@@ -261,6 +290,9 @@ final class Store: ObservableObject {
 
     func start() {
         transfers.onChange = { [weak self] in self?.refresh() }
+        uploadTracker.onChange = { [weak self] in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.refresh() } }
+        }
         refresh(force: true)
         timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
@@ -284,16 +316,19 @@ final class Store: ObservableObject {
         inFlight = true
         let collector = self.collector
         let liveTransfers = transfers.snapshot()
+        let tracker = uploadTracker
         queue.async {
-            let next = collector.collect(force: force, transfers: liveTransfers)
+            let next = collector.collect(force: force, transfers: liveTransfers, uploads: tracker.summary())
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.inFlight = false
                     if next != self.snapshot {
                         self.snapshot = next
                     }
-                    self.transfers.watch(Dictionary(next.accounts.map { ($0.config.key, $0.config.folder) },
-                                                    uniquingKeysWith: { first, _ in first }))
+                    let folders = Dictionary(next.accounts.map { ($0.config.key, $0.config.folder) },
+                                             uniquingKeysWith: { first, _ in first })
+                    self.transfers.watch(folders)
+                    self.uploadTracker.watch(folders)
                     if self.pending {
                         let again = self.pendingForce
                         self.pending = false

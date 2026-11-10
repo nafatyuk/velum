@@ -57,12 +57,6 @@ struct Diagnostics: Equatable {
     var pendingFiles: Int { filesToUpload + filesToDownload }
 }
 
-/// A large-file upload OneDrive has started but not finished.
-struct PendingUpload: Equatable {
-    let name: String
-    let started: Date?
-}
-
 /// One row of OneDrive's activity history (the list its own menu bar panel shows).
 struct Activity: Identifiable, Equatable {
     let accountKey: String
@@ -75,13 +69,15 @@ struct Activity: Identifiable, Equatable {
     var id: String { accountKey + "|" + path }
 
     // Codes from OneDrive's UXDatabase history_list, checked against real files on this Mac:
-    // 4 = downloaded, 5 = uploaded, 6 = deleted, 10 and 11 = moved away from this path.
+    // 4 = downloaded, 5 = uploaded, 6 = deleted, 10 and 11 = moved away from this path,
+    // 12 = restored by OneDrive (seen when a delete hit a file it was still downloading).
     var verb: String {
         switch kind {
         case 4: return "Downloaded"
         case 5: return "Uploaded"
         case 6: return "Deleted"
         case 10, 11: return "Moved"
+        case 12: return "Restored"
         default: return "Synced"
         }
     }
@@ -239,28 +235,6 @@ enum OneDriveFiles {
             ))
         }
         return rows
-    }
-
-    // MARK: Uploads in flight
-
-    /// OneDrive keeps resumable upload sessions in settings/<slot>/uploads.txt until the upload finishes.
-    /// Each session has a line like "<id> <hash> FullFileUpload <id>", with the file name on the line before
-    /// it and the session start (Unix time) on the line after.
-    static func uploadsPath(_ key: String) -> String {
-        settingsRoot.appending(path: "\(key)/uploads.txt").path
-    }
-
-    static func pendingUploads(at path: String) -> [PendingUpload] {
-        guard let text = readText(URL(fileURLWithPath: path)), !text.isEmpty else { return [] }
-        let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
-        var uploads: [PendingUpload] = []
-        for (i, line) in lines.enumerated() where i > 0 {
-            let tokens = line.split(separator: " ")
-            guard tokens.count >= 3, tokens[2].hasSuffix("Upload") else { continue }
-            let started = i + 1 < lines.count ? TimeInterval(lines[i + 1]).map { Date(timeIntervalSince1970: $0) } : nil
-            uploads.append(PendingUpload(name: lines[i - 1], started: started))
-        }
-        return uploads
     }
 
     // MARK: Which OneDrive process serves which account

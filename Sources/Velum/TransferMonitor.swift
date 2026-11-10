@@ -1,23 +1,19 @@
 import Foundation
 
-/// Live uploads/downloads for one account, from the progress macOS's File Provider publishes for the
-/// OneDrive folder (the same progress Finder's sidebar spinner shows). Real time, public API, and it
-/// keeps working when OneDrive's own menu bar icons are hidden.
+/// Live transfers for one account, from the progress macOS's File Provider publishes for the OneDrive
+/// folder (the same progress Finder's sidebar spinner shows). Real time, public API, and it keeps working
+/// when OneDrive's own menu bar icons are hidden.
 struct TransferInfo: Equatable {
     var uploadingFiles = 0
     var downloadingFiles = 0
+    /// Per-file transfers File Provider publishes without saying which direction (OneDrive's uploads look
+    /// like this). UploadTracker usually knows about the same files.
+    var otherFiles = 0
     var bytesDone: Int64 = 0
     var bytesTotal: Int64 = 0
 
-    var files: Int { uploadingFiles + downloadingFiles }
+    var files: Int { uploadingFiles + downloadingFiles + otherFiles }
     var isActive: Bool { files > 0 }
-
-    var headline: String {
-        let noun = files == 1 ? "file" : "files"
-        if uploadingFiles > 0 && downloadingFiles > 0 { return "Syncing \(files) \(noun)" }
-        if uploadingFiles > 0 { return "Uploading \(files) \(noun)" }
-        return "Downloading \(files) \(noun)"
-    }
 
     var bytesText: String? {
         guard bytesTotal > 0 else { return nil }
@@ -34,6 +30,7 @@ final class TransferMonitor {
         let progress: Progress
         let isRoot: Bool
         var lastCompleted: Int64
+        var lastFilesDone = 0
         var lastMovement: Date
 
         init(account: String, progress: Progress, isRoot: Bool) {
@@ -83,6 +80,17 @@ final class TransferMonitor {
         }
     }
 
+    /// Bytes or finished-file count moving both count as progress.
+    private func noteMovement(_ entry: Entry, now: Date) {
+        let p = entry.progress
+        let filesDone = (p.userInfo[.fileCompletedCountKey] as? NSNumber)?.intValue ?? 0
+        if p.completedUnitCount != entry.lastCompleted || filesDone != entry.lastFilesDone {
+            entry.lastCompleted = p.completedUnitCount
+            entry.lastFilesDone = filesDone
+            entry.lastMovement = now
+        }
+    }
+
     /// Current transfers per account key.
     func snapshot(now: Date = Date()) -> [String: TransferInfo] {
         var result: [String: TransferInfo] = [:]
@@ -92,16 +100,13 @@ final class TransferMonitor {
             var info = TransferInfo()
             for operation in [Progress.FileOperationKind.uploading, .downloading] {
                 let matching = list.filter { $0.progress.fileOperationKind == operation && !$0.progress.isFinished }
+                for entry in matching { noteMovement(entry, now: now) }
+                // Drop stalled transfers first, so a stuck folder-level total can't hide active files.
+                let moving = matching.filter { now.timeIntervalSince($0.lastMovement) < stallAfter }
                 // The folder-level progress already totals the per-file ones; count it alone when present.
-                let roots = matching.filter(\.isRoot)
-                for entry in (roots.isEmpty ? matching : roots) {
+                let roots = moving.filter(\.isRoot)
+                for entry in (roots.isEmpty ? moving : roots) {
                     let p = entry.progress
-                    if p.completedUnitCount != entry.lastCompleted {
-                        entry.lastCompleted = p.completedUnitCount
-                        entry.lastMovement = now
-                    }
-                    guard now.timeIntervalSince(entry.lastMovement) < stallAfter else { continue }
-
                     let total = (p.userInfo[.fileTotalCountKey] as? NSNumber)?.intValue
                     let done = (p.userInfo[.fileCompletedCountKey] as? NSNumber)?.intValue ?? 0
                     let remaining = total.map { max(0, $0 - done) } ?? 1
@@ -113,6 +118,11 @@ final class TransferMonitor {
                         info.bytesDone += min(p.completedUnitCount, p.totalUnitCount)
                     }
                 }
+            }
+            for entry in list where entry.progress.fileOperationKind == nil && !entry.isRoot && !entry.progress.isFinished {
+                noteMovement(entry, now: now)
+                guard now.timeIntervalSince(entry.lastMovement) < stallAfter else { continue }
+                info.otherFiles += 1
             }
             if info.isActive { result[account] = info }
         }

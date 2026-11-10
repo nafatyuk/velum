@@ -157,7 +157,10 @@ struct PanelView: View {
     // MARK: Banner
 
     private var showsBanner: Bool {
-        !store.snapshot.oneDriveRunning || (!store.snapshot.axTrusted && !store.exactStatusTipDismissed)
+        // The Accessibility tip only appears after the user asks for it from the ••• menu: it helps only
+        // while OneDrive's own icons exist, so it shouldn't nag everyone.
+        !store.snapshot.oneDriveRunning
+            || (store.exactStatusRequested && !store.snapshot.axTrusted && !store.exactStatusTipDismissed)
     }
 
     @ViewBuilder private var banner: some View {
@@ -166,17 +169,11 @@ struct PanelView: View {
                       text: "OneDrive isn’t running, so nothing is syncing.",
                       button: "Start",
                       action: actions.startOneDrive)
-        } else if store.exactStatusRequested {
+        } else {
             BannerRow(symbol: "text.viewfinder",
                       text: "Switch on Velum in Accessibility, then restart it.",
                       button: "Restart",
                       action: actions.restartApp,
-                      dismiss: actions.dismissExactStatusTip)
-        } else {
-            BannerRow(symbol: "text.viewfinder",
-                      text: "Show OneDrive’s exact status, like upload progress and pauses.",
-                      button: "Turn On…",
-                      action: actions.enableExactStatus,
                       dismiss: actions.dismissExactStatusTip)
         }
     }
@@ -350,6 +347,7 @@ struct StatePlatter: View {
     private var symbol: String {
         switch state {
         case .ok: "checkmark"
+        case .unknown: "questionmark"
         case .syncing: "arrow.triangle.2.circlepath"
         case .paused: "pause.fill"
         case .offline: "wifi.slash"
@@ -361,6 +359,7 @@ struct StatePlatter: View {
     private var color: Color {
         switch state {
         case .ok: .green
+        case .unknown: .gray
         case .syncing: .blue
         case .paused: .orange
         case .offline: .gray

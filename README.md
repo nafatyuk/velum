@@ -15,15 +15,16 @@ every account's sync status, recent activity across all of them, and quick ways 
 
 - **One icon.** A cloud that gets a small badge when any account is syncing, paused, has a sync issue,
   or isn't running.
-- **Every account at a glance.** OneDrive's own status wording for each account ("Backed up and
-  synced", "Uploading file (58%)"), when it last did something, and how many files it holds.
+- **Every account at a glance.** Live status for each account: files uploading, waiting to upload or
+  failing (with the reason), downloads in progress, and when it last did something. Each status says
+  where it came from, and Velum never says "Up to date" without evidence.
 - **Recent activity, merged.** Uploads, downloads, deletes and moves from all accounts in one list.
   Click a file to show it in Finder.
 - **Quick actions.** Open an account's folder or its web view, its recycle bin (work and school
   accounts), storage page, restart or quit OneDrive, open at login.
 
-Velum never modifies OneDrive's files or settings and makes no network connections. The only things it
-does to OneDrive are the Restart and Quit OneDrive commands you click.
+Velum needs no special permissions, never modifies OneDrive's files or settings, and makes no network
+connections. The only things it does to OneDrive are the Restart and Quit OneDrive commands you click.
 
 ## Requirements
 
@@ -44,8 +45,8 @@ cd velum
 This builds a release binary, wraps it in `Velum.app`, signs it, copies it to `~/Applications` and
 launches it. Signing uses a self-signed identity that `Scripts/sign.sh` creates on first run in its own
 keychain file under `~/Library/Application Support/Velum/Signing/` (not your login keychain). Because
-that signature stays the same across builds, macOS keeps Velum's Accessibility permission when you
-rebuild.
+that signature stays the same across builds, macOS keeps Velum's Accessibility permission (if you
+allow it) when you rebuild.
 
 ## First run
 
@@ -53,31 +54,39 @@ rebuild.
    off. OneDrive keeps syncing; only its icons go away.
 2. **Find Velum's icon.** macOS 27 puts new menu bar icons in its hidden section (behind the « control).
    ⌘-drag Velum's cloud to where you want it.
-3. **Optional: allow Accessibility** for exact status. Click Velum's cloud, then **Turn On…**, and switch
-   Velum on in Privacy & Security → Accessibility. Without it Velum still works, using the sources
-   listed below.
+Velum works fully from here, with no permissions. One optional extra: if you keep OneDrive's own icons
+allowed (for example tucked into the hidden section instead of switched off), Velum can also show
+OneDrive's exact wording ("Uploading file (58%)", "Paused"). Turn it on from Velum's ••• menu → Show
+OneDrive's Exact Status…, which asks for Accessibility access.
 
-## What Velum reads
+## How Velum knows
 
-With Accessibility allowed, Velum reads one thing through it: the title of OneDrive's own menu bar
-items, which is OneDrive's status text. Velum doesn't read other apps' windows, your screen or your
+Each account's status line names its source:
+
+- **Live from macOS.** Velum watches your OneDrive folders for changed files (FSEvents) and asks macOS's
+  File Provider where each one is: waiting, uploading, uploaded, or failed. OneDrive keeps those flags
+  accurate to within a second or two. Downloads come from the transfer progress File Provider publishes
+  for each folder. Changes made while Velum was quit are caught up when it starts (up to a day back).
+- **Nothing pending · OneDrive report, 9:35 AM.** "Up to date" means nothing is moving or waiting right
+  now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy.
+- **OneDrive report, 9:35 AM.** Account-wide states such as Paused or Sync issue come only from that hourly
+  report, so they can be up to an hour old.
+- **From OneDrive.** OneDrive's own icon text, when you've turned that option on and its icons exist.
+
+When Velum has no evidence it says so ("No status yet", "Status unknown") and shows a plain cloud.
+
+Everything is read-only. Velum doesn't read file contents, other apps' windows, your screen or your
 keystrokes.
-
-OneDrive only exposes that text while its menu bar items exist. If OneDrive starts with its icons
-switched off in System Settings, it never creates them, so there is nothing to read and Velum uses the
-other sources below. Keeping exact status working across restarts is being worked on.
-
-Everything else comes from files OneDrive already keeps on your Mac, opened read-only:
 
 | Source | Used for |
 |---|---|
-| OneDrive's menu bar item titles (Accessibility) | exact live status |
-| File Provider progress for each OneDrive folder | live downloads |
-| `~/Library/Application Support/OneDrive/settings/<account>/uploads.txt` | large uploads in progress |
-| `~/Library/Logs/OneDrive/<account>/SyncDiagnostics.log` | OneDrive's hourly report (pause, sync issues, file counts) |
+| FSEvents for each OneDrive folder, plus File Provider's per-file sync flags | live uploads, waiting files, upload errors |
+| File Provider transfer progress for each OneDrive folder | live downloads |
+| `~/Library/Logs/OneDrive/<account>/SyncDiagnostics.log` | OneDrive's hourly report (pause, sync issues) |
 | `~/Library/Application Support/OneDrive/settings/<account>/UXDatabase.db` | recent activity |
 | `<account>/*.ini` in the same folder | which accounts exist and their folders and web addresses |
 | Which files OneDrive's processes have open | which OneDrive process serves which account, and whether it's running |
+| OneDrive's menu bar item titles (Accessibility, optional) | OneDrive's exact wording, while its icons exist |
 
 To see what Velum sees without opening it:
 
@@ -91,8 +100,12 @@ To see what Velum sees without opening it:
 - **It depends on OneDrive's undocumented internals.** OneDrive updates can change these files, so Velum
   may show less until it's updated. If something looks wrong, open an issue with the `--dump` output
   (it lists file names from your accounts, so redact what you need to).
-- **Status badges understand English.** With Accessibility on, OneDrive's status text is shown in any
-  language, but the icon badge reads it in English. Other languages fall back to a plain cloud.
+- **Paused and other account-wide states can lag up to an hour**, because only OneDrive's hourly report
+  carries them (unless OneDrive's own icon text is available).
+- **Renaming a folder while files inside it are still uploading** can make Velum lose sight of those
+  files until they change again.
+- **OneDrive's exact wording is read in English.** In other languages it's shown as written, but the
+  icon badge treats it as unknown.
 - **OneDrive's own panel** (Pause syncing, Settings) can't be opened while its icons are hidden. Use
   Velum's ••• → Show OneDrive's Own Icons… to switch them back on when you need it.
 - **Personal accounts have no recycle bin link**, because OneDrive offers no stable address for it.

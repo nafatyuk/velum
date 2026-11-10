@@ -249,6 +249,7 @@ enum AppModel {
         enableExactStatus: {
             closePanel()
             store.exactStatusRequested = true
+            store.exactStatusTipDismissed = false
             LiveStatus.requestTrust()
             OneDriveControl.openSystemSettings(.accessibility)
         },
@@ -278,7 +279,7 @@ enum StatusIcon {
         if let cached = cache[state] { return cached }
 
         let badgeSymbol: String? = switch state {
-        case .ok: nil
+        case .ok, .unknown: nil
         case .syncing: "arrow.triangle.2.circlepath"
         case .paused: "pause.fill"
         case .offline: "minus"
