@@ -1,0 +1,11 @@
+# SwiftPM build output
+.build/
+# App bundle and icon set assembled by build.sh
+build/
+*.dSYM/
+.swiftpm/
+.DS_Store
+# The current app icon is drawn from an SF Symbol, which Apple's terms don't allow in app icons.
+# It stays local until an original icon replaces it.
+Resources/AppIcon.icns
+Scripts/make_icon.swift
