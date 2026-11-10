@@ -21,6 +21,7 @@ struct PanelActions {
     var enableExactStatus: @MainActor () -> Void
     var restartApp: @MainActor () -> Void
     var dismissExactStatusTip: @MainActor () -> Void
+    var setNotifications: @MainActor (Bool) -> Void
     var setLoginItem: @MainActor (Bool) -> Void
     var quitApp: @MainActor () -> Void
 }
@@ -34,6 +35,8 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            InsetSeparator()
+            LidRow(verdict: store.lidVerdict)
             InsetSeparator()
             if store.accounts.isEmpty {
                 emptyState
@@ -72,6 +75,10 @@ struct PanelView: View {
             Spacer(minLength: 8)
             CircleIconButton(systemName: "arrow.clockwise", help: "Refresh") { store.refresh(force: true) }
             Menu {
+                Toggle("Notify About Problems", isOn: Binding(
+                    get: { store.notificationsEnabled },
+                    set: { actions.setNotifications($0) }
+                ))
                 Toggle("Open at Login", isOn: Binding(
                     get: { store.loginItemEnabled },
                     set: { actions.setLoginItem($0) }
@@ -201,7 +208,8 @@ struct AccountRow: View {
                     Text(account.detail)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 4)
@@ -329,6 +337,73 @@ struct BannerRow: View {
 }
 
 // MARK: - Pieces
+
+/// "Is it safe to close the lid?" Answered from live upload tracking: every local change is in the cloud,
+/// or it isn't, or Velum can't vouch for it.
+struct LidRow: View {
+    let verdict: LidVerdict
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
+
+    private var title: String {
+        switch verdict {
+        case .safe: "Safe to close the lid"
+        case .pending: "Wait before closing the lid"
+        case .failing, .notRunning: "Not everything is in the cloud"
+        case .unknown: "Can’t vouch for every change"
+        }
+    }
+
+    private var subtitle: String {
+        switch verdict {
+        case .safe: "Every change on this Mac is in the cloud."
+        case .pending(let n): "\(files(n)) still on the way up."
+        case .failing(let n): "\(files(n)) can’t upload. See the account below."
+        case .notRunning: "OneDrive isn’t running, so new changes stay on this Mac."
+        case .unknown(let reason): reason + "."
+        }
+    }
+
+    private var symbol: String {
+        switch verdict {
+        case .safe: "laptopcomputer"
+        case .pending: "arrow.up.circle.fill"
+        case .failing, .notRunning: "exclamationmark.triangle.fill"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    private var color: Color {
+        switch verdict {
+        case .safe: .green
+        case .pending: .blue
+        case .failing, .notRunning: .orange
+        case .unknown: .secondary
+        }
+    }
+}
 
 /// Colored status circle, in the style of Control Center's module glyphs.
 struct StatePlatter: View {

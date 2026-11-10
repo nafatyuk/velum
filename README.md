@@ -15,6 +15,10 @@ every account's sync status, recent activity across all of them, and quick ways 
 
 - **One icon.** A cloud that gets a small badge when any account is syncing, paused, has a sync issue,
   or isn't running.
+- **"Safe to close the lid?"** The top of the panel answers it: every change on this Mac is in the cloud,
+  or N files are still on the way up, or some can't upload, or Velum can't vouch for it.
+- **Alerts when something's wrong.** Uploads failing, a sync issue, uploads stuck for 10 minutes, or
+  OneDrive stopping on its own. See [Alerts](#alerts).
 - **Every account at a glance.** Live status for each account: files uploading, waiting to upload or
   failing (with the reason), downloads in progress, and when it last did something. Each status says
   where it came from, and Velum never says "Up to date" without evidence.
@@ -95,6 +99,24 @@ To see what Velum sees without opening it:
 .build/release/Velum --dump --no-icon-text  # as if Accessibility were off
 ```
 
+## Alerts
+
+Velum alerts you when:
+
+- files can't upload (with the reason),
+- OneDrive reports a sync issue,
+- uploads have waited more than 10 minutes,
+- OneDrive stops without you quitting it from Velum.
+
+A problem has to last 30 seconds before Velum mentions it, it's mentioned once, and you get one
+"resolved" note when it clears. Click an alert to open Velum's panel. Turn alerts off with ••• → Notify
+About Problems.
+
+macOS only lets apps signed with an Apple-issued certificate (Developer ID or Apple Development) use
+system notifications; it refuses locally signed builds without asking. Built from source, Velum
+therefore shows its own alert as a small glass banner under its menu bar icon. A build signed with
+an Apple-issued certificate uses system notifications automatically.
+
 ## Limits
 
 - **It depends on OneDrive's undocumented internals.** OneDrive updates can change these files, so Velum
@@ -124,7 +146,8 @@ To see what Velum sees without opening it:
 
 The menu bar shell (a status item opened through macOS 27's `NSStatusItemExpandedInterfaceDelegate`
 and a non-activating panel on `NSGlassEffectView`) is adapted from
-[Crisp](https://github.com/didriksg/Crisp) by Didrik Galteland, under the MIT License. See
+[Crisp](https://github.com/didriksg/Crisp) by Didrik Galteland, under the MIT License, and Velum's alert
+banner follows the idea of Crisp's on-screen banner. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License

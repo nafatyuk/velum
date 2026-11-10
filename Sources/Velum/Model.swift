@@ -37,8 +37,24 @@ struct AccountStatus: Identifiable, Equatable {
     let pid: pid_t?
     let isLive: Bool
     let lastActivity: Date?
+    /// Local changes not in the cloud yet (waiting or uploading), and ones that failed.
+    var uploadsPending = 0
+    var uploadsFailed = 0
+    var firstFailure: String?
+    var oldestWaiting: Date?
+    /// Velum is watching this account's folder with no known gaps, so the counts above are complete.
+    var uploadsCovered = false
 
     var id: String { config.key }
+}
+
+/// The answer to "is it safe to close the lid?": is every local change in the cloud?
+enum LidVerdict: Equatable {
+    case safe
+    case pending(Int)
+    case failing(Int)
+    case notRunning
+    case unknown(String)
 }
 
 struct Snapshot: Equatable {
@@ -195,9 +211,15 @@ final class Collector: @unchecked Sendable {
         if !source.isEmpty { details.append(source) }
         if let last = lastActivity { details.append("last activity \(RelTime.string(last, now: now))") }
 
-        return AccountStatus(config: config, name: name, state: state, headline: headline,
-                             detail: details.joined(separator: " · "), source: source, pid: pid,
-                             isLive: live != nil, lastActivity: lastActivity)
+        var status = AccountStatus(config: config, name: name, state: state, headline: headline,
+                                   detail: details.joined(separator: " · "), source: source, pid: pid,
+                                   isLive: live != nil, lastActivity: lastActivity)
+        status.uploadsPending = (uploads?.waiting ?? 0) + uploading
+        status.uploadsFailed = failed.count
+        status.firstFailure = failed.first
+        status.oldestWaiting = uploads?.oldestWaiting
+        status.uploadsCovered = running && watchingUploads && uploads?.coverageGap != true
+        return status
     }
 
     static func sameAccount(_ liveName: String, _ config: AccountConfig) -> Bool {
@@ -233,6 +255,11 @@ final class Collector: @unchecked Sendable {
 final class Store: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
     @Published var loginItemEnabled = false
+    @Published var notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(notificationsEnabled, forKey: "notificationsEnabled") }
+    }
+    /// Called with every finished refresh (changed or not), so time-based checks keep running.
+    var onRefresh: ((Snapshot) -> Void)?
     /// Set after "Turn On…" so the tip can offer a restart, which macOS sometimes needs before the
     /// Accessibility switch takes effect.
     @Published var exactStatusRequested = false
@@ -284,6 +311,20 @@ final class Store: ObservableObject {
         return snapshot.accounts.map { "\($0.name): \($0.headline)" }.joined(separator: "\n")
     }
 
+    var lidVerdict: LidVerdict {
+        let accounts = snapshot.accounts
+        if !snapshot.oneDriveRunning || accounts.contains(where: { $0.state == .notRunning }) { return .notRunning }
+        if accounts.isEmpty { return .unknown("No OneDrive accounts found") }
+        let failed = accounts.reduce(0) { $0 + $1.uploadsFailed }
+        if failed > 0 { return .failing(failed) }
+        let pending = accounts.reduce(0) { $0 + $1.uploadsPending }
+        if pending > 0 { return .pending(pending) }
+        if let blind = accounts.first(where: { !$0.uploadsCovered }) {
+            return .unknown("Velum may have missed recent changes in \(blind.name)")
+        }
+        return .safe
+    }
+
     func account(for key: String) -> AccountStatus? {
         snapshot.accounts.first { $0.config.key == key }
     }
@@ -325,6 +366,7 @@ final class Store: ObservableObject {
                     if next != self.snapshot {
                         self.snapshot = next
                     }
+                    self.onRefresh?(next)
                     let folders = Dictionary(next.accounts.map { ($0.config.key, $0.config.folder) },
                                              uniquingKeysWith: { first, _ in first })
                     self.transfers.watch(folders)

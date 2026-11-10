@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPanelShown = false
     private var hasShownOnce = false
     private var subscriptions = Set<AnyCancellable>()
+    private let banner = Banner()
 
     private let cornerRadius: CGFloat = 16
 
@@ -59,6 +60,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in DispatchQueue.main.async { self?.fitPanel() } }
             .store(in: &subscriptions)
         store.start()
+
+        let notifier = AppModel.notifier
+        notifier.start()
+        notifier.onOpen = { [weak self] in self?.showPanel() }
+        banner.anchor = { [weak self] in self?.statusItem.button?.window?.frame }
+        banner.onClick = { [weak self] in self?.showPanel() }
+        notifier.fallback = { [weak self] title, body, isProblem in
+            guard let self, !self.isPanelShown else { return }   // already looking at the panel
+            self.banner.show(title: title, body: body, isProblem: isProblem)
+        }
+        store.onRefresh = { snapshot in notifier.update(snapshot, enabled: store.notificationsEnabled) }
+        if store.notificationsEnabled { notifier.requestPermission() }
 
         LoginItem.enableOnFirstLaunch()
         store.loginItemEnabled = LoginItem.isEnabled
@@ -207,6 +220,7 @@ extension AppDelegate: @MainActor NSStatusItemExpandedInterfaceDelegate {
 @MainActor
 enum AppModel {
     static let store = Store()
+    static let notifier = Notifier()
     static var panelCloser: (() -> Void)?
 
     static func closePanel() {
@@ -235,10 +249,12 @@ enum AppModel {
             store.refresh(force: true)
         },
         restartOneDrive: {
+            notifier.userStoppedOneDriveAt = Date()
             OneDriveControl.restart { store.refresh(force: true) }
             store.refresh(force: true)
         },
         quitOneDrive: {
+            notifier.userStoppedOneDriveAt = Date()
             OneDriveControl.quit()
             store.refresh(force: true)
         },
@@ -258,6 +274,10 @@ enum AppModel {
         },
         dismissExactStatusTip: {
             store.exactStatusTipDismissed = true
+        },
+        setNotifications: { on in
+            store.notificationsEnabled = on
+            if on { notifier.requestPermission() }
         },
         setLoginItem: { on in
             LoginItem.setEnabled(on)
