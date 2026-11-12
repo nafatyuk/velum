@@ -1,6 +1,6 @@
 # C2 · One protocol, OneDrive as adapter one
 
-**Bucket** C Core · **Part one** · **Status: planned** · **Waits for** C1 · **Runs alongside** R1 · **Feeds** A3, A4, A7, P1, C3, T1, A5, A6, S2, P4
+**Bucket** C Core · **Part one** · **Status: done** November 12, 2026, built with P1 · **Waits for** C1 · **Runs alongside** R1 · **Feeds** A3, A4, A7, P1, C3, T1, A5, A6, S2, P4
 
 ## Brief
 
@@ -76,4 +76,79 @@ You may edit every Swift file, since this card moves code, so no other code card
 
 ## Hand-off
 
-_Not started._
+Built November 12, 2026, in the same session as P1 (iCloud Drive), at the user's request to add iCloud.
+
+**What changed, for OneDrive: nothing visible.** `Velum --dump` from the old installed build and from the new build, run back to back on this Mac, differ only by the new iCloud lines and a minute's rollover in Recent's times. The single-provider panel keeps its title ("OneDrive"), summary wording, banner, menus and row text. One deliberate exception: the "OneDrive isn't running" banner now uses `exclamationmark.triangle` instead of `exclamationmark.icloud`, so it can't read as an iCloud fault. That change was the consultant's catch.
+
+**The protocol** (`Sources/Velum/Providers/SyncProvider.swift`):
+- `SyncProvider` has an `id` (`ProviderID`: `.oneDrive` = "onedrive", `.iCloud` = "icloud"; the raw values key saved state and alerts) and `gather(force:now:) -> ProviderEvidence`.
+- `gather` runs on the collector's serial queue for every refresh, so it must not block. iCloud's slow `brctl` runs on a queue of its own.
+- `ProviderEvidence` carries:
+  - `present`: absent providers show nothing;
+  - `clientRunning`: nil when there is no client;
+  - `accounts: [AccountEvidence]` and `activity`;
+  - OneDrive's `axTrusted` and `liveItemsFound`;
+  - `trouble`: a service-wide problem shown at the service's heading.
+- `AccountEvidence` carries:
+  - `config` and `name`;
+  - `running` and `pid`;
+  - `exactStatus`: the client's own words. Empty means found but blank; nil means not found.
+  - `report: ProviderReport?`: label, written, state, headline. Its `source` reads "OneDrive report, 1:56 AM";
+  - `lastActivity`;
+  - `notes`: facts for the row's own line.
+- `AccountConfig` is now provider-neutral:
+  - `key`, `provider`, `folder` (what Open in Finder opens);
+  - `watchRoots`: every folder whose changes count;
+  - `places: [NamedRoot]`: every path that leads into the account, with how to word a location;
+  - `fallbackName`, `webURL`, `recycleBinURL`, `storageURL`;
+  - `keepsOwnHistory`: false means Velum records the uploads it sees finish.
+
+  OneDrive's URLs are worked out at discovery, and the old `relativePath` became `location(of:)`.
+- `Activity` moved there too, now `Codable`.
+
+**One merge for every provider.** `Collector.status(_:transfer:uploads:watchingUploads:now:)` keeps C1's order:
+1. not running;
+2. exact status ("From <provider>");
+3. failed uploads;
+4. moving files;
+5. waiting files ("Paused, N waiting" when the report says paused);
+6. unlabelled progress;
+7. the report, with "Nothing pending · " added only when the report is healthy and coverage has no gaps;
+8. "No status yet".
+
+OneDrive's code table (65536 paused, 8194 not syncing, 1854 sync issue, 0 and 16777216 healthy, anything else unknown) moved into `OneDriveProvider.report(from:)`.
+
+**OneDrive is adapter one,** in `Providers/OneDrive/`:
+- `OneDriveProvider.swift` holds discovery caching, the process-to-account mapping, icon text, the report and the history, all moved from `Collector` without rewriting.
+- `OneDriveFiles.swift` and `LiveStatus.swift` moved there.
+- The `.fetch` filter still sits in `UploadTracker.isSyncable`; it is harmless for iCloud. Moving it into the adapter is left for whoever next touches the tracker.
+
+**Snapshot and Store:**
+- `Snapshot.providers: [ProviderStatus]` (id, `clientRunning`, `trouble`).
+- `Snapshot.oneDrive`, `oneDriveRunning` and `stoppedProviders`.
+- `Snapshot.lidVerdict` moved here from `Store`, so it is testable. `LidVerdict.notRunning` now carries the provider's name.
+- `Store.title` is the provider's name with one provider, "Cloud Sync" with several. `Store.groupsByService` is true with several providers. `Store.spokenName(_:)` gives "OneDrive, School" for VoiceOver once services are grouped.
+- `Notifier`:
+  - keys a stopped client by the provider's id, so "onedrive" is unchanged;
+  - skips the per-account checks of a stopped provider;
+  - names the provider in issue alerts and "running again" notes;
+  - creates its notification center lazily, so tests can make a `Notifier`.
+
+**Several folders per account.** `UploadTracker.watch(_:recordingUploadsFor:)` and `TransferMonitor.watch(_:)` take `[key: [URL]]`. There is one FSEvents stream per account covering all its folders, so there is still one resume point per account, and one progress subscription per folder.
+
+**Tests** (`Tests/VelumTests`, 30 tests, `swift test`):
+- The status order and its wording.
+- OneDrive's codes and wording classification.
+- The lid verdict across providers.
+- iCloud's `brctl` parsing and discovery.
+- The tracker's filters and the transient-error rule.
+- Location wording.
+- Alerts: settle, once only, resolved, a user stop, an iCloud stuck alert.
+
+Swift Testing's `@Test` macro loads with the Command Line Tools only when `Package.swift` declares tools version 6.0. Under 5.10 the build fails with "plugin for module 'TestingMacros' not found". The package now declares 6.0 with `swiftLanguageModes: [.v5]`, so the app's code is unchanged.
+
+**Characterization, honestly:** the tests were written after the move. They are pinned to the strings the old code produced, and checked against old-versus-new dumps. They were not run on the old code first.
+
+**For later cards:**
+- `Velum --render-panel <file.png> [--dark]` draws the real panel with live data into an image, without replacing the running app. Use it for A3, A4 and A6's screenshots.
+- `Store.show(_:)` feeds it a snapshot.

@@ -8,42 +8,6 @@ enum AccountKind: String {
     case personal, business
 }
 
-/// One OneDrive account as configured on this Mac, read from OneDrive's own settings files.
-struct AccountConfig: Equatable, Identifiable {
-    let key: String             // OneDrive's slot name: "Personal", "Business1", "Business2", ...
-    let kind: AccountKind
-    let folder: URL             // ~/Library/CloudStorage/OneDrive-<Name>
-    let aliases: [String]       // every path that points at the folder (e.g. the ~/OneDrive symlink)
-    let siteURL: URL?           // the account's web root, from OneDrive's library settings
-    let fallbackName: String
-
-    var id: String { key }
-
-    var webURL: URL {
-        if kind == .business, let site = siteURL { return site.appending(path: "_layouts/15/onedrive.aspx") }
-        return URL(string: "https://onedrive.live.com/")!
-    }
-
-    var recycleBinURL: URL? {
-        guard kind == .business, let site = siteURL else { return nil }
-        return site.appending(path: "_layouts/15/RecycleBin.aspx")
-    }
-
-    var storageURL: URL? {
-        if kind == .business { return siteURL?.appending(path: "_layouts/15/storman.aspx") }
-        return URL(string: "https://onedrive.live.com/?v=managestorage")
-    }
-
-    /// `path` relative to this account's folder, or nil if it lies elsewhere.
-    func relativePath(of path: String) -> String? {
-        for root in aliases {
-            if path == root { return "" }
-            if path.hasPrefix(root + "/") { return String(path.dropFirst(root.count + 1)) }
-        }
-        return nil
-    }
-}
-
 /// The hourly report OneDrive writes to ~/Library/Logs/OneDrive/<slot>/SyncDiagnostics.log.
 struct Diagnostics: Equatable {
     var written: Date
@@ -55,40 +19,6 @@ struct Diagnostics: Equatable {
     var folders = 0
 
     var pendingFiles: Int { filesToUpload + filesToDownload }
-}
-
-/// One row of OneDrive's activity history (the list its own menu bar panel shows).
-struct Activity: Identifiable, Equatable {
-    let accountKey: String
-    let path: String
-    let name: String
-    let kind: Int
-    let date: Date
-    let app: String?
-
-    var id: String { accountKey + "|" + path }
-
-    // Codes from OneDrive's UXDatabase history_list, checked against real files on this Mac:
-    // 4 = downloaded, 5 = uploaded, 6 = deleted, 10 and 11 = moved away from this path,
-    // 12 = restored by OneDrive (seen when a delete hit a file it was still downloading).
-    var verb: String {
-        switch kind {
-        case 4: return "Downloaded"
-        case 5: return "Uploaded"
-        case 6: return "Deleted"
-        case 10, 11: return "Moved"
-        case 12: return "Restored"
-        default: return "Synced"
-        }
-    }
-
-    var isGone: Bool { kind == 6 || kind == 10 || kind == 11 }
-
-    /// The app that opened the file, when OneDrive knows it (e.g. "Finder").
-    var appName: String? {
-        guard let app, !app.isEmpty, app != "fileproviderd", !app.hasPrefix("macbox_") else { return nil }
-        return app
-    }
 }
 
 /// Read-only access to the files OneDrive keeps on disk. Nothing here writes to OneDrive.
@@ -128,17 +58,29 @@ enum OneDriveFiles {
 
             let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
             let kind: AccountKind = key == "Personal" ? .personal : .business
+            let site = library.site.flatMap(URL.init(string:))
+            let aliases = [folderPath] + links.filter { $0.value == folderPath }.map(\.key).sorted()
             accounts.append(AccountConfig(
                 key: key,
-                kind: kind,
+                provider: .oneDrive,
                 folder: folder,
-                aliases: [folderPath] + links.filter { $0.value == folderPath }.map(\.key).sorted(),
-                siteURL: library.site.flatMap(URL.init(string:)),
-                fallbackName: fallbackName(kind: kind, folder: folder)
+                watchRoots: [folder],
+                places: aliases.map { NamedRoot(path: $0, name: folder.lastPathComponent, prefixed: false) },
+                fallbackName: fallbackName(kind: kind, folder: folder),
+                webURL: webURL(kind: kind, site: site),
+                recycleBinURL: kind == .business ? site?.appending(path: "_layouts/15/RecycleBin.aspx") : nil,
+                storageURL: kind == .business ? site?.appending(path: "_layouts/15/storman.aspx")
+                    : URL(string: "https://onedrive.live.com/?v=managestorage")
             ))
         }
         // Personal first, then work/school accounts in OneDrive's own order.
-        return accounts.sorted { ($0.kind == .personal ? "0" : "1") + $0.key < ($1.kind == .personal ? "0" : "1") + $1.key }
+        func order(_ a: AccountConfig) -> String { (a.key == "Personal" ? "0" : "1") + a.key }
+        return accounts.sorted { order($0) < order($1) }
+    }
+
+    static func webURL(kind: AccountKind, site: URL?) -> URL {
+        if kind == .business, let site { return site.appending(path: "_layouts/15/onedrive.aspx") }
+        return URL(string: "https://onedrive.live.com/")!
     }
 
     static func fallbackName(kind: AccountKind, folder: URL) -> String {

@@ -12,23 +12,31 @@ struct UploadSummary: Equatable {
     var coverageGap = false
 }
 
-/// Watches each OneDrive folder for changed files (FSEvents) and asks File Provider where each one is
-/// (`ubiquitousItemIsUploaded`, `…IsUploading`, `…UploadingError`). OneDrive keeps those flags honest:
-/// a changed file reads "not uploaded" at once, "uploading" when OneDrive starts, and "uploaded" within a
-/// second or two of OneDrive's own record. Public APIs, no permission needed, and unlike OneDrive's icon
-/// text it keeps working after OneDrive restarts with its icons hidden.
+/// What the tracker knows right now: which accounts it watches, what's still pending in each, and the
+/// uploads it saw finish in accounts whose service keeps no history of its own (iCloud).
+struct UploadsSnapshot: Equatable {
+    var watching: Set<String> = []
+    var accounts: [String: UploadSummary] = [:]
+    var completed: [Activity] = []
+}
+
+/// Watches each account's folders for changed files (FSEvents) and asks File Provider where each one is
+/// (`ubiquitousItemIsUploaded`, `…IsUploading`, `…UploadingError`). OneDrive and iCloud keep those flags
+/// honest: a changed file reads "not uploaded" at once, "uploading" when the upload starts, and "uploaded"
+/// within a second or two of the service's own record. Public APIs, no permission needed, and unlike
+/// OneDrive's icon text it keeps working after OneDrive restarts with its icons hidden.
 ///
 /// Pending files and the FSEvents resume point are saved, so a quit or restart doesn't lose track.
 final class UploadTracker: @unchecked Sendable {
     private final class Stream {
         let key: String
-        let folder: URL
+        let roots: [URL]
         var ref: FSEventStreamRef?
         weak var tracker: UploadTracker?
 
-        init(key: String, folder: URL, tracker: UploadTracker) {
+        init(key: String, roots: [URL], tracker: UploadTracker) {
             self.key = key
-            self.folder = folder
+            self.roots = roots
             self.tracker = tracker
         }
     }
@@ -53,12 +61,17 @@ final class UploadTracker: @unchecked Sendable {
     private var watching: Set<String> = []
     private var gapUntil: [String: Date] = [:]
     private var dirty = false
+    private var completedDirty = false
     private var checkpoint: (id: FSEventStreamEventId, taken: Date)?
+    private var recordUploads: Set<String> = []
+    private var completed: [Activity] = []
     // Main thread only:
     private var streams: [String: Stream] = [:]
 
     private let defaults = UserDefaults.standard
     private let pendingKey = "pendingUploads"
+    private let completedKey = "recentUploads"
+    private let completedLimit = 30
     private let maxCandidates = 5000
     private let inspectBudget = 400                 // File Provider lookups per refresh
     private let maxReplay: TimeInterval = 86_400    // don't replay more than a day of change history
@@ -78,6 +91,10 @@ final class UploadTracker: @unchecked Sendable {
            let saved = try? JSONDecoder().decode([String: Candidate].self, from: data) {
             candidates = saved
         }
+        if let data = defaults.data(forKey: completedKey),
+           let saved = try? JSONDecoder().decode([Activity].self, from: data) {
+            completed = saved
+        }
     }
 
     deinit {
@@ -86,20 +103,23 @@ final class UploadTracker: @unchecked Sendable {
 
     // MARK: Streams
 
-    /// Starts one FSEvents stream per account folder and stops streams for folders that are gone.
-    func watch(_ folders: [String: URL]) {
+    /// Starts one FSEvents stream per account (covering all its folders) and stops streams for accounts or
+    /// folders that are gone. For accounts in `recordingUploadsFor`, uploads seen to finish are remembered
+    /// for the Recent list.
+    func watch(_ roots: [String: [URL]], recordingUploadsFor: Set<String> = []) {
         dispatchPrecondition(condition: .onQueue(.main))
-        for (key, stream) in streams where folders[key] != stream.folder {
+        for (key, stream) in streams where roots[key] != stream.roots {
             stop(stream)
             streams[key] = nil
         }
-        for (key, folder) in folders where streams[key] == nil {
-            let stream = Stream(key: key, folder: folder, tracker: self)
+        for (key, list) in roots where streams[key] == nil && !list.isEmpty {
+            let stream = Stream(key: key, roots: list, tracker: self)
             if start(stream) { streams[key] = stream }
         }
         let keys = Set(streams.keys)
         lock.lock()
         watching = keys
+        recordUploads = recordingUploadsFor
         candidates = candidates.filter { keys.contains($0.value.account) }
         lock.unlock()
     }
@@ -136,7 +156,7 @@ final class UploadTracker: @unchecked Sendable {
 
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents
                                              | kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagWatchRoot)
-        guard let ref = FSEventStreamCreate(nil, callback, &context, [stream.folder.path] as CFArray,
+        guard let ref = FSEventStreamCreate(nil, callback, &context, stream.roots.map(\.path) as CFArray,
                                             since, 0.5, flags) else { return false }
         FSEventStreamSetDispatchQueue(ref, queue)
         guard FSEventStreamStart(ref) else {
@@ -232,7 +252,7 @@ final class UploadTracker: @unchecked Sendable {
 
     /// Checks changed files against File Provider (at most `inspectBudget` per call, oldest check first)
     /// and returns what is still pending per account. Reads metadata only, never file contents.
-    func summary(now: Date = Date()) -> (watching: Set<String>, accounts: [String: UploadSummary]) {
+    func summary(now: Date = Date()) -> UploadsSnapshot {
         lock.lock()
         let due = candidates.sorted { $0.value.checked < $1.value.checked }
             .prefix(inspectBudget)
@@ -245,12 +265,26 @@ final class UploadTracker: @unchecked Sendable {
         for result in results {
             // Skip if the file changed again while we looked: the newer change gets its own check.
             guard var candidate = candidates[result.path], candidate.generation == result.generation else { continue }
-            if let state = result.state {
+            switch result.state {
+            case .pending(let state):
                 if candidate.state != state { dirty = true }
                 candidate.state = state
                 candidate.checked = now
                 candidates[result.path] = candidate
-            } else {
+            case .uploaded:
+                // Only an upload Velum saw pending counts: a file that was already in the cloud when first
+                // checked (a download landing, a rename) didn't just upload.
+                if recordUploads.contains(candidate.account), candidate.state != .unchecked {
+                    completed.removeAll { $0.accountKey == candidate.account && $0.path == result.path }
+                    completed.insert(Activity(accountKey: candidate.account, path: result.path,
+                                              name: (result.path as NSString).lastPathComponent,
+                                              kind: Activity.uploaded, date: now, app: nil), at: 0)
+                    if completed.count > completedLimit { completed.removeLast(completed.count - completedLimit) }
+                    completedDirty = true
+                }
+                candidates[result.path] = nil
+                dirty = true
+            case .done:
                 candidates[result.path] = nil
                 dirty = true
             }
@@ -273,6 +307,7 @@ final class UploadTracker: @unchecked Sendable {
         }
         for (account, until) in gapUntil where until > now { summaries[account]?.coverageGap = true }
         let watched = watching
+        let seen = completed.filter { recordUploads.contains($0.accountKey) }
 
         // Refresh the resume point every few minutes even when nothing changes, using the ID seen one
         // interval ago: everything before it has certainly been delivered by now.
@@ -289,32 +324,51 @@ final class UploadTracker: @unchecked Sendable {
         } else {
             persistIfDirty()
         }
-        return (watched, summaries)
+        return UploadsSnapshot(watching: watched, accounts: summaries, completed: seen)
     }
 
-    /// nil = done with this file (uploaded, gone, or never synced).
-    private static func inspect(_ path: String) -> State? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
+    private enum Outcome {
+        case pending(State)
+        /// In the cloud now.
+        case uploaded
+        /// Gone, excluded from sync, or never synced.
+        case done
+    }
+
+    private static func inspect(_ path: String) -> Outcome {
+        guard FileManager.default.fileExists(atPath: path) else { return .done }
         let url = URL(fileURLWithPath: path)
-        guard let values = try? url.resourceValues(forKeys: keys) else { return .unchecked }   // try again later
-        if values.isUbiquitousItem == false || values.ubiquitousItemIsExcludedFromSync == true { return nil }
-        if let error = values.ubiquitousItemUploadingError {
-            return .failed("\(url.lastPathComponent): \(error.localizedDescription)")
+        guard let values = try? url.resourceValues(forKeys: keys) else { return .pending(.unchecked) }   // try again later
+        if values.isUbiquitousItem == false || values.ubiquitousItemIsExcludedFromSync == true { return .done }
+        if values.ubiquitousItemIsUploaded == true { return .uploaded }
+        if let error = values.ubiquitousItemUploadingError, !isTransient(error) {
+            return .pending(.failed("\(url.lastPathComponent): \(error.localizedDescription)"))
         }
         switch (values.ubiquitousItemIsUploaded, values.ubiquitousItemIsUploading) {
-        case (true?, _): return nil
-        case (_, true?): return .uploading
-        case (false?, _): return .waiting
-        default: return .unchecked     // provider hasn't reported yet
+        case (_, true?): return .pending(.uploading)
+        case (false?, _): return .pending(.waiting)
+        default: return .pending(.unchecked)     // provider hasn't reported yet
         }
+    }
+
+    /// iCloud marks every new or edited file with "couldn't access your iCloud account"
+    /// (NSUbiquitousFileUbiquityServerNotAvailable, 4355) until its upload finishes, about 20 s for a small
+    /// file here. Read as "waiting": if the server really is unreachable, the file stays waiting and the
+    /// stuck alert fires after 10 minutes.
+    static func isTransient(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == NSCocoaErrorDomain && ns.code == NSUbiquitousFileUbiquityServerNotAvailable
     }
 
     private func persistIfDirty() {
         lock.lock()
-        guard dirty else { lock.unlock(); return }
+        let pendingData = dirty ? try? JSONEncoder().encode(candidates) : nil
+        let completedData = completedDirty ? try? JSONEncoder().encode(completed) : nil
+        let wrotePending = dirty, wroteCompleted = completedDirty
         dirty = false
-        let data = try? JSONEncoder().encode(candidates)
+        completedDirty = false
         lock.unlock()
-        defaults.set(data, forKey: pendingKey)
+        if wrotePending { defaults.set(pendingData, forKey: pendingKey) }
+        if wroteCompleted { defaults.set(completedData, forKey: completedKey) }
     }
 }

@@ -1,8 +1,8 @@
 import Foundation
 import UserNotifications
 
-/// Notifies when something needs attention: uploads failing, a sync issue OneDrive reports, uploads stuck
-/// for more than 10 minutes, or OneDrive stopping without the user quitting it from Velum. A problem has to
+/// Notifies when something needs attention: uploads failing, a sync issue a service reports, uploads stuck
+/// for more than 10 minutes, or a sync client (OneDrive) stopping without the user quitting it from Velum. A problem has to
 /// last 30 seconds before it notifies, it notifies once, and a notified problem gets one follow-up when it
 /// clears. Clicking a notification opens Velum's panel.
 @MainActor
@@ -16,12 +16,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private enum Kind {
         case failed, issue, stuck, stopped
 
-        var resolved: String {
+        func resolved(service: String) -> String {
             switch self {
             case .failed: "No files are failing to upload now."
-            case .issue: "OneDrive no longer reports a sync problem."
+            case .issue: "\(service) no longer reports a sync problem."
             case .stuck: "The waiting uploads have gone through."
-            case .stopped: "OneDrive is running again."
+            case .stopped: "\(service) is running again."
             }
         }
     }
@@ -32,8 +32,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         var notified: Bool
     }
 
-    private let center = UNUserNotificationCenter.current()
-    private var episodes: [String: Episode] = [:]     // account key, or "onedrive" for OneDrive as a whole
+    // Lazy: touching the notification center outside an app bundle (unit tests) crashes.
+    private lazy var center = UNUserNotificationCenter.current()
+    private var episodes: [String: Episode] = [:]     // account key, or the provider's id ("onedrive") for a whole service
     private let settle: TimeInterval = 30
     private let stuckAfter: TimeInterval = 10 * 60
     private let userStopGrace: TimeInterval = 120
@@ -66,28 +67,26 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         var current: [String: Problem] = [:]
         let userStopped = userStoppedOneDriveAt.map { now.timeIntervalSince($0) < userStopGrace } ?? false
 
-        if !snapshot.oneDriveRunning {
-            if !userStopped {
-                current["onedrive"] = Problem(kind: .stopped, title: "OneDrive stopped",
-                                              body: "Changes on this Mac aren’t syncing. Open Velum to start it again.")
-            }
-        } else {
-            for account in snapshot.accounts {
-                if account.uploadsFailed > 0 {
-                    current[account.id] = Problem(kind: .failed,
-                                                  title: "\(account.name): \(Self.files(account.uploadsFailed)) can’t upload",
-                                                  body: account.firstFailure ?? "")
-                } else if account.state == .error {
-                    current[account.id] = Problem(kind: .issue, title: "\(account.name): \(account.headline)",
-                                                  body: "OneDrive reports a sync problem.")
-                } else if account.uploadsPending > 0, let since = account.oldestWaiting,
-                          now.timeIntervalSince(since) > stuckAfter {
-                    current[account.id] = Problem(kind: .stuck, title: "\(account.name): uploads are stuck",
-                                                  body: "\(Self.files(account.uploadsPending)) waiting since \(RelTime.clock(since)).")
-                } else if account.state == .notRunning, !userStopped {
-                    current[account.id] = Problem(kind: .stopped, title: "\(account.name) isn’t syncing",
-                                                  body: "OneDrive isn’t running for this account.")
-                }
+        let stopped = Set(snapshot.stoppedProviders)
+        for provider in stopped where !(provider == .oneDrive && userStopped) {
+            current[provider.rawValue] = Problem(kind: .stopped, title: "\(provider.name) stopped",
+                                                 body: "Changes on this Mac aren’t syncing. Open Velum to start it again.")
+        }
+        for account in snapshot.accounts where !stopped.contains(account.provider) {
+            if account.uploadsFailed > 0 {
+                current[account.id] = Problem(kind: .failed,
+                                              title: "\(account.name): \(Self.files(account.uploadsFailed)) can’t upload",
+                                              body: account.firstFailure ?? "")
+            } else if account.state == .error {
+                current[account.id] = Problem(kind: .issue, title: "\(account.name): \(account.headline)",
+                                              body: "\(account.provider.name) reports a sync problem.")
+            } else if account.uploadsPending > 0, let since = account.oldestWaiting,
+                      now.timeIntervalSince(since) > stuckAfter {
+                current[account.id] = Problem(kind: .stuck, title: "\(account.name): uploads are stuck",
+                                              body: "\(Self.files(account.uploadsPending)) waiting since \(RelTime.clock(since)).")
+            } else if account.state == .notRunning, !(account.provider == .oneDrive && userStopped) {
+                current[account.id] = Problem(kind: .stopped, title: "\(account.name) isn’t syncing",
+                                              body: "\(account.provider.name) isn’t running for this account.")
             }
         }
 
@@ -106,8 +105,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         for (key, episode) in episodes where current[key] == nil {
             episodes[key] = nil
             guard episode.notified, enabled else { continue }
-            let name = key == "onedrive" ? "OneDrive" : (snapshot.accounts.first { $0.id == key }?.name ?? "OneDrive")
-            post(key, title: "\(name): resolved", body: episode.kind.resolved, sound: false)
+            let account = snapshot.accounts.first { $0.id == key }
+            let service = ProviderID(rawValue: key)?.name ?? account?.provider.name ?? "OneDrive"
+            let name = ProviderID(rawValue: key)?.name ?? account?.name ?? service
+            post(key, title: "\(name): resolved", body: episode.kind.resolved(service: service), sound: false)
         }
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Live transfers for one account, from the progress macOS's File Provider publishes for the OneDrive
-/// folder (the same progress Finder's sidebar spinner shows). Real time, public API, and it keeps working
+/// Live transfers for one account, from the progress macOS's File Provider publishes for the account's
+/// folders (the same progress Finder's sidebar spinner shows). Real time, public API, and it keeps working
 /// when OneDrive's own menu bar icons are hidden.
 struct TransferInfo: Equatable {
     var uploadingFiles = 0
@@ -45,38 +45,40 @@ final class TransferMonitor {
     /// A transfer that hasn't moved for this long is treated as stalled, not as "syncing".
     private let stallAfter: TimeInterval = 120
 
-    private var subscriptions: [String: (folder: URL, token: Any)] = [:]
+    private var subscriptions: [String: (roots: [URL], tokens: [Any])] = [:]
     private var entries: [ObjectIdentifier: Entry] = [:]
     var onChange: (() -> Void)?
 
-    /// Subscribes to each account folder once; drops folders that are gone.
-    func watch(_ folders: [String: URL]) {
-        for (key, sub) in subscriptions where folders[key] != sub.folder {
-            Progress.removeSubscriber(sub.token)
+    /// Subscribes to each account's folders once; drops accounts and folders that are gone.
+    func watch(_ roots: [String: [URL]]) {
+        for (key, sub) in subscriptions where roots[key] != sub.roots {
+            sub.tokens.forEach(Progress.removeSubscriber)
             subscriptions[key] = nil
             entries = entries.filter { $0.value.account != key }
         }
-        for (key, folder) in folders where subscriptions[key] == nil {
-            let rootPath = folder.standardizedFileURL.path
-            let token = Progress.addSubscriber(forFileURL: folder) { [weak self] progress in
-                let id = ObjectIdentifier(progress)
-                let isRoot = progress.fileURL?.standardizedFileURL.path == rootPath
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        self?.entries[id] = Entry(account: key, progress: progress, isRoot: isRoot)
-                        self?.onChange?()
-                    }
-                }
-                return {
+        for (key, list) in roots where subscriptions[key] == nil {
+            let tokens: [Any] = list.map { folder in
+                let rootPath = folder.standardizedFileURL.path
+                return Progress.addSubscriber(forFileURL: folder) { [weak self] progress in
+                    let id = ObjectIdentifier(progress)
+                    let isRoot = progress.fileURL?.standardizedFileURL.path == rootPath
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated {
-                            self?.entries[id] = nil
+                            self?.entries[id] = Entry(account: key, progress: progress, isRoot: isRoot)
                             self?.onChange?()
+                        }
+                    }
+                    return {
+                        DispatchQueue.main.async {
+                            MainActor.assumeIsolated {
+                                self?.entries[id] = nil
+                                self?.onChange?()
+                            }
                         }
                     }
                 }
             }
-            subscriptions[key] = (folder, token)
+            subscriptions[key] = (list, tokens)
         }
     }
 

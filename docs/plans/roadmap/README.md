@@ -21,12 +21,18 @@ The few items it deliberately doesn't build are under [Left out on purpose](#lef
 
 Each card is one session's work. Paste a card's "Brief" into a new session; it stands on its own.
 
-## Progress (November 10, 2026)
+## Progress (November 12, 2026)
 
-**3 of 25 cards done**, all from the memo's "start this week":
+**5 of 25 cards done or built.** Three came from the memo's "start this week":
 - C1, permission-free tracking (`0a85400`);
 - A1, the "Safe to close the lid?" line (`d09e180`);
 - A2, problem alerts (`d09e180`).
+
+Two were added on November 12, at your request for iCloud:
+- C2, the provider protocol;
+- P1, iCloud Drive, pulled forward from part two.
+
+P1 still needs its live check in the installed app. The panel now groups accounts under a heading per service, a layout chosen after Codex and the Fable consultant weighed in (see [P1's hand-off](cards/P1-icloud-drive.md#hand-off)).
 
 The fourth "this week" item, Developer ID enrolment, is R1 and waits on your decision. The app icon is on hold at your word; it holds up only G1 and G3.
 
@@ -83,7 +89,7 @@ The campaign follows the memo's three horizons.
 | [C1 · Permission-free tracking as the product](cards/C1-permission-free-tracking.md) | Status from FSEvents, File Provider's per-file flags, transfer progress and OneDrive's own files. Accessibility is an opt-in extra. Every status says where it came from, and nothing says "Up to date" without evidence | nothing | nothing | **done** (`0a85400`) |
 | [A1 · "Safe to close the lid?"](cards/A1-safe-to-close-the-lid.md) | One line at the top of the panel: safe, N files on the way up, some can't upload, or Velum can't vouch | C1 | A2 | **done** (`d09e180`) |
 | [A2 · Problem alerts](cards/A2-problem-alerts.md) | An alert for failing uploads, a sync issue, uploads stuck for 10 minutes, or OneDrive stopping. A problem must last 30 s; it alerts once, then sends one "resolved" note. Velum's own banner stands in until R1 | C1 | A1 | **done** (`d09e180`); system notifications wait for R1 |
-| [C2 · One protocol, OneDrive as adapter one](cards/C2-sync-provider-protocol.md) | A `SyncProvider` protocol, with OneDrive moved behind it and nothing visible changed. A test target pins today's behavior | C1 | R1 | planned |
+| [C2 · One protocol, OneDrive as adapter one](cards/C2-sync-provider-protocol.md) | A `SyncProvider` protocol, with OneDrive moved behind it and nothing visible changed. A test target pins today's behavior | C1 | R1 | **done** (November 12, with P1) |
 | [A3 · Stuck files, by name](cards/A3-stuck-files.md) | Files waiting or failing past a threshold, listed in the panel with Show in Finder; the stuck alert names the first one | C2 | A4, A7, R2 | planned |
 | [A4 · What each light means, and how old it is](cards/A4-legend-and-why-unknown.md) | An icon legend. A "why is it unknown?" row saying what would make the status known. The age on every status, and old evidence shown as old | C2 | A3, A7, R2 | planned |
 | [A7 · Notice when OneDrive changes underneath](cards/A7-onedrive-update-check.md) | At launch and whenever OneDrive's version changes, each OneDrive internal Velum reads is checked against a tested-version note. Anything that no longer reads is dropped as evidence, with a reason, and the status degrades to unknown | C2 | A3, A4, R2 | planned |
@@ -94,7 +100,7 @@ The campaign follows the memo's three horizons.
 
 | Card | Result | Waits for | Runs alongside | Status |
 |---|---|---|---|---|
-| [P1 · iCloud Drive](cards/P1-icloud-drive.md) | iCloud Drive as adapter two: per-file flags plus `brctl status`, parsed defensively. The lid line, alerts and stuck files work for it | C2 | C3, T1, A5, A6, S2 | planned |
+| [P1 · iCloud Drive](cards/P1-icloud-drive.md) | iCloud Drive as adapter two: per-file flags plus `brctl status`, parsed defensively. The lid line, alerts and stuck files work for it | C2 | C3, T1, A5, A6, S2 | **built** November 12 (pulled forward at your request); live check after install |
 | [C3 · Any CloudStorage folder (beta)](cards/C3-any-cloudstorage-folder.md) | Every live root under `~/Library/CloudStorage` (Dropbox, Google Drive streaming, Box, Proton, Nextcloud…) at basic fidelity, labelled beta, leftover folders ignored | C2 | P1, T1, A5, A6, S2 | planned |
 | [T1 · `velumctl`](cards/T1-velumctl.md) | A command-line tool inside the app: `velumctl status`, `lid` and `pending`, as text or `--json`, with exit codes for scripts | C2 | P1, C3, A5, A6, S2 | planned |
 | [A5 · A warning before sleep or shutdown](cards/A5-sleep-and-shutdown-guard.md) | Sleep, log out or shut down with uploads pending, and Velum says so; it never blocks | C2, A1, A2 | P1, C3, T1, A6, S2 | planned |
@@ -200,7 +206,7 @@ flowchart LR
 
   classDef done fill:#e6f4ea,stroke:#34a853
   classDef gate stroke-dasharray: 5 5
-  class C1,A1,A2 done
+  class C1,A1,A2,C2,P1 done
   class ICON,ENROL,TESTER,XCODE gate
 ```
 

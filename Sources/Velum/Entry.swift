@@ -10,6 +10,10 @@ struct VelumApp: App {
             DebugDump.run()
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
+            DebugDump.renderPanel(to: CommandLine.arguments[i + 1], dark: CommandLine.arguments.contains("--dark"))
+            exit(0)
+        }
     }
 
     var body: some Scene {
@@ -22,19 +26,63 @@ struct VelumApp: App {
 enum DebugDump {
     @MainActor
     static func run() {
+        let (snapshot, transfers, uploads) = collectOnce()
+        print(snapshot, transfers: transfers, uploads: uploads)
+    }
+
+    /// `Velum --render-panel <file.png> [--dark]` draws the panel, with live data, into an image, so a
+    /// change can be looked at without replacing the running app. The glass is drawn as a plain window
+    /// background: only the layout and text are real.
+    @MainActor
+    static func renderPanel(to path: String, dark: Bool) {
+        let (snapshot, _, _) = collectOnce()
+        let store = AppModel.store
+        store.show(snapshot)
+        store.loginItemEnabled = LoginItem.isEnabled
+        NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let view = PanelView(store: store, actions: AppModel.actions)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, dark ? .dark : .light)
+        let host = NSHostingView(rootView: view)
+        host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        host.frame.size = host.fittingSize
+        host.layoutSubtreeIfNeeded()
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        Swift.print("Rendered \(Int(host.bounds.width))×\(Int(host.bounds.height)) pt to \(path)")
+    }
+
+    @MainActor
+    private static func collectOnce() -> (Snapshot, [String: TransferInfo], UploadsSnapshot) {
         let collector = Collector()
         let first = collector.collect(force: true)
-        let folders = Dictionary(first.accounts.map { ($0.config.key, $0.config.folder) }, uniquingKeysWith: { a, _ in a })
+        let roots = Dictionary(first.accounts.map { ($0.config.key, $0.config.watchRoots) }, uniquingKeysWith: { a, _ in a })
         let monitor = TransferMonitor()
-        monitor.watch(folders)
+        monitor.watch(roots)
         let tracker = UploadTracker()
-        tracker.watch(folders)   // replays changes since the last run, if any
+        tracker.watch(roots, recordingUploadsFor: Set(first.accounts.filter { !$0.config.keepsOwnHistory }.map(\.id)))
+        // iCloud's brctl check runs in the background and takes 10–13 s; wait for it so the dump is complete.
+        for provider in collector.providers {
+            (provider as? ICloudProvider)?.waitForFirstCheck(timeout: 30)
+        }
         RunLoop.main.run(until: Date().addingTimeInterval(2))   // let File Provider and FSEvents report
         let transfers = monitor.snapshot()
         let uploads = tracker.summary()
         let snapshot = collector.collect(force: true, transfers: transfers, uploads: uploads)
+        return (snapshot, transfers, uploads)
+    }
 
-        print("OneDrive running: \(snapshot.oneDriveRunning) · Accessibility trusted: \(snapshot.axTrusted) · icon text readable: \(snapshot.liveItemsFound)")
+    @MainActor
+    private static func print(_ snapshot: Snapshot, transfers: [String: TransferInfo], uploads: UploadsSnapshot) {
+        for provider in snapshot.providers {
+            switch provider.id {
+            case .oneDrive:
+                print("OneDrive running: \(snapshot.oneDriveRunning) · Accessibility trusted: \(snapshot.axTrusted) · icon text readable: \(snapshot.liveItemsFound)")
+            case .iCloud:
+                print("iCloud Drive: on\(provider.trouble.map { " · \($0)" } ?? "")")
+            }
+        }
         for account in snapshot.accounts {
             let t = transfers[account.config.key]
             print("• \(account.name) [\(account.config.key)] state=\(account.state) pid=\(account.pid.map(String.init) ?? "-") iconText=\(account.isLive) transfer=\(t.map { "up \($0.uploadingFiles) down \($0.downloadingFiles) other \($0.otherFiles), \($0.bytesText ?? "-")" } ?? "none")")
@@ -42,8 +90,12 @@ enum DebugDump {
                 print("    uploads: \(u.uploading) uploading, \(u.waiting) waiting, \(u.failed.count) failed")
             }
             print("    \(account.headline)")
+            if !account.notes.isEmpty { print("    \(account.notes)") }
             if !account.detail.isEmpty { print("    \(account.detail)") }
             print("    folder: \(account.config.folder.path)")
+            if account.config.watchRoots.count > 1 {
+                print("    also watching: \(account.config.watchRoots.dropFirst().map(\.path).joined(separator: ", "))")
+            }
             print("    online: \(account.config.webURL.absoluteString)")
         }
         print("Recent:")
@@ -53,4 +105,6 @@ enum DebugDump {
             print("  \(verb) \(when) [\(item.accountKey)] \(item.name)")
         }
     }
+
+    private static func print(_ line: String) { Swift.print(line) }
 }

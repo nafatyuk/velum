@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -9,6 +9,12 @@ let package = Package(
             name: "Velum",
             path: "Sources/Velum",
             linkerSettings: [.linkedLibrary("sqlite3")]
-        )
-    ]
+        ),
+        .testTarget(
+            name: "VelumTests",
+            dependencies: ["Velum"],
+            path: "Tests/VelumTests"
+        ),
+    ],
+    swiftLanguageModes: [.v5]
 )

@@ -32,6 +32,8 @@ struct AccountStatus: Identifiable, Equatable {
     let state: SyncState
     let headline: String
     let detail: String
+    /// Facts about the account itself, shown on their own line ("Desktop & Documents included · 1.27 TB free").
+    var notes = ""
     /// Where the headline came from: "From OneDrive", "Live from macOS", "OneDrive report, 1:45 PM".
     let source: String
     let pid: pid_t?
@@ -42,10 +44,11 @@ struct AccountStatus: Identifiable, Equatable {
     var uploadsFailed = 0
     var firstFailure: String?
     var oldestWaiting: Date?
-    /// Velum is watching this account's folder with no known gaps, so the counts above are complete.
+    /// Velum is watching this account's folders with no known gaps, so the counts above are complete.
     var uploadsCovered = false
 
     var id: String { config.key }
+    var provider: ProviderID { config.provider }
 }
 
 /// The answer to "is it safe to close the lid?": is every local change in the cloud?
@@ -53,89 +56,102 @@ enum LidVerdict: Equatable {
     case safe
     case pending(Int)
     case failing(Int)
-    case notRunning
+    /// A sync client isn't running (its name).
+    case notRunning(String)
     case unknown(String)
+}
+
+/// A service present on this Mac, as of the last refresh.
+struct ProviderStatus: Equatable {
+    let id: ProviderID
+    /// nil: no client app to run (iCloud).
+    var clientRunning: Bool?
+    /// A service-wide problem ("Storage full").
+    var trouble: String?
+
+    var isStopped: Bool { clientRunning == false }
 }
 
 struct Snapshot: Equatable {
     var accounts: [AccountStatus] = []
     var activity: [Activity] = []
-    var oneDriveRunning = false
+    var providers: [ProviderStatus] = []
     var axTrusted = false
     var liveItemsFound = false
+
+    var oneDrive: ProviderStatus? { providers.first { $0.id == .oneDrive } }
+    var oneDriveRunning: Bool { oneDrive?.clientRunning == true }
+    var stoppedProviders: [ProviderID] { providers.filter(\.isStopped).map(\.id) }
+
+    /// "Is it safe to close the lid?", from live upload tracking only: a provider's hourly report can say
+    /// "healthy" while a file is still waiting to go up.
+    var lidVerdict: LidVerdict {
+        if let stopped = providers.first(where: \.isStopped) { return .notRunning(stopped.id.name) }
+        if providers.isEmpty { return .notRunning(ProviderID.oneDrive.name) }
+        if let account = accounts.first(where: { $0.state == .notRunning }) { return .notRunning(account.provider.name) }
+        if accounts.isEmpty {
+            return .unknown("No \(providers.map(\.id.name).joined(separator: " or ")) accounts found")
+        }
+        let failed = accounts.reduce(0) { $0 + $1.uploadsFailed }
+        if failed > 0 { return .failing(failed) }
+        let pending = accounts.reduce(0) { $0 + $1.uploadsPending }
+        if pending > 0 { return .pending(pending) }
+        if let blind = accounts.first(where: { !$0.uploadsCovered }) {
+            return .unknown("Velum may have missed recent changes in \(blind.name)")
+        }
+        return .safe
+    }
 }
 
 /// Gathers everything off the main thread. Only ever used from one serial queue.
 final class Collector: @unchecked Sendable {
-    private var configs: [AccountConfig] = []
-    private var lastDiscovery = Date.distantPast
-    private var pidKeys: [pid_t: Set<String>] = [:]
-    private var diagCache: [String: (stamp: Date?, value: Diagnostics?)] = [:]
-    private var activityCache: [String: (stamp: Date?, value: [Activity])] = [:]
-    private let defaults = UserDefaults.standard
+    let providers: [SyncProvider]
 
-    func collect(force: Bool, transfers: [String: TransferInfo] = [:],
-                 uploads: (watching: Set<String>, accounts: [String: UploadSummary]) = ([], [:])) -> Snapshot {
+    init(providers: [SyncProvider] = [OneDriveProvider(), ICloudProvider()]) {
+        self.providers = providers
+    }
+
+    func collect(force: Bool, transfers: [String: TransferInfo] = [:], uploads: UploadsSnapshot = UploadsSnapshot()) -> Snapshot {
         let now = Date()
-        if force || configs.isEmpty || now.timeIntervalSince(lastDiscovery) > 60 {
-            configs = OneDriveFiles.discoverAccounts()
-            lastDiscovery = now
-        }
-
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: oneDriveBundleID).filter { !$0.isTerminated }
-        var mapping: [pid_t: Set<String>] = [:]
-        for app in apps {
-            let pid = app.processIdentifier
-            if let known = pidKeys[pid], !known.isEmpty {
-                mapping[pid] = known
-            } else {
-                mapping[pid] = OneDriveFiles.accountKeys(openedBy: pid)
-            }
-        }
-        pidKeys = mapping
-        let mappingUnknown = !apps.isEmpty && mapping.values.allSatisfy(\.isEmpty)
-
-        let live = LiveStatus.read()
         var snapshot = Snapshot()
-        snapshot.oneDriveRunning = !apps.isEmpty
-        snapshot.axTrusted = LiveStatus.isTrusted
-        snapshot.liveItemsFound = !live.isEmpty
-
         var everything: [Activity] = []
-        for config in configs {
-            let diag = diagnostics(config.key, force: force)
-            let history = activity(config.key, force: force)
-            everything += history
 
-            var pid = mapping.first(where: { $0.value.contains(config.key) })?.key
-            if pid == nil, let p = diag?.pid, mapping[p] != nil, mappingUnknown { pid = p }
-            let running = pid != nil || mappingUnknown
-
-            let liveItem = live.first(where: { pid != nil && $0.pid == pid })
-                ?? live.first(where: { Self.sameAccount($0.name, config) })
-            if let liveItem, !liveItem.name.isEmpty {
-                defaults.set(liveItem.name, forKey: "name.\(config.key)")
+        for provider in providers {
+            let evidence = provider.gather(force: force, now: now)
+            guard evidence.present else { continue }
+            snapshot.providers.append(ProviderStatus(id: provider.id, clientRunning: evidence.clientRunning,
+                                                     trouble: evidence.trouble))
+            if provider.id == .oneDrive {
+                snapshot.axTrusted = evidence.axTrusted
+                snapshot.liveItemsFound = evidence.liveItemsFound
             }
-            let name = liveItem?.name ?? defaults.string(forKey: "name.\(config.key)") ?? config.fallbackName
-
-            snapshot.accounts.append(Self.status(
-                config: config, name: name, running: running, pid: pid, live: liveItem,
-                transfer: transfers[config.key], uploads: uploads.accounts[config.key],
-                watchingUploads: uploads.watching.contains(config.key),
-                diag: diag, lastActivity: history.first?.date, now: now
-            ))
+            everything += evidence.activity
+            for var account in evidence.accounts {
+                let key = account.config.key
+                if !account.config.keepsOwnHistory {
+                    let seen = uploads.completed.filter { $0.accountKey == key }
+                    everything += seen
+                    account.lastActivity = account.lastActivity ?? seen.map(\.date).max()
+                }
+                snapshot.accounts.append(Self.status(
+                    account, transfer: transfers[key], uploads: uploads.accounts[key],
+                    watchingUploads: uploads.watching.contains(key), now: now
+                ))
+            }
         }
         everything.sort { $0.date > $1.date }
         snapshot.activity = Array(everything.prefix(25))
         return snapshot
     }
 
-    /// Status sources, most authoritative first: OneDrive's own icon text (only readable while its icons
-    /// exist), live File Provider state (changed files' upload flags and transfer progress), then
-    /// OneDrive's hourly report. With no evidence the state is `.unknown`, never "Up to date".
-    static func status(config: AccountConfig, name: String, running: Bool, pid: pid_t?, live: LiveItem?,
-                       transfer: TransferInfo?, uploads: UploadSummary?, watchingUploads: Bool,
-                       diag: Diagnostics?, lastActivity: Date?, now: Date) -> AccountStatus {
+    /// Status sources, most authoritative first, the same order for every provider: the client's own
+    /// words (OneDrive's icon text, only readable while its icons exist), live File Provider state (changed
+    /// files' upload flags and transfer progress), then the provider's periodic report. With no evidence
+    /// the state is `.unknown`, never "Up to date".
+    static func status(_ account: AccountEvidence, transfer: TransferInfo?, uploads: UploadSummary?,
+                       watchingUploads: Bool, now: Date) -> AccountStatus {
+        let config = account.config
+        let report = account.report
         var state = SyncState.unknown
         var headline = "No status yet"
         var source = ""
@@ -149,16 +165,15 @@ final class Collector: @unchecked Sendable {
         // says "something is moving", never how many.
         let unlabelled = (transfer?.otherFiles ?? 0) > 0
         let waiting = uploads?.waiting ?? 0
-        let reportTime = diag.map { "OneDrive report, \(RelTime.clock($0.written))" } ?? ""
         func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
 
-        if !running {
+        if !account.running {
             state = .notRunning
             headline = "Not running, so nothing is syncing"
-        } else if let live, !live.status.isEmpty {
-            state = SyncState.classify(live.status)
-            headline = live.status
-            source = "From OneDrive"
+        } else if let exact = account.exactStatus, !exact.isEmpty {
+            state = SyncState.classify(exact)
+            headline = exact
+            source = "From \(config.provider.name)"
         } else if !failed.isEmpty {
             state = .error
             headline = failed.count == 1 ? "1 file can't upload" : "\(failed.count) files can't upload"
@@ -176,8 +191,7 @@ final class Collector: @unchecked Sendable {
             if let bytes = transfer?.bytesText { extra.append(bytes) }
             source = "Live from macOS"
         } else if waiting > 0 {
-            // Community-documented code: 65536 = paused. Microsoft doesn't publish these.
-            let paused = diag?.progressState == 65536
+            let paused = report?.state == .paused
             state = paused ? .paused : .syncing
             headline = paused ? "Paused, \(files(waiting)) waiting" : "Waiting to upload \(files(waiting))"
             if let oldest = uploads?.oldestWaiting, now.timeIntervalSince(oldest) > 10 * 60 {
@@ -188,66 +202,31 @@ final class Collector: @unchecked Sendable {
             state = .syncing
             headline = "Syncing changes"
             source = "Live from macOS"
-        } else if let code = diag?.progressState {
-            // Community-documented values from OneDrive's hourly diagnostics report.
-            switch code {
-            case 65536: state = .paused; headline = "Paused"; source = reportTime
-            case 8194: state = .offline; headline = "Not syncing"; source = reportTime
-            case 1854: state = .error; headline = "Sync issue"; source = reportTime
-            case 0, 16777216:
+        } else if let report {
+            state = report.state
+            headline = report.headline
+            source = report.source
+            if report.state == .ok {
                 // A healthy report plus, when Velum is watching with no gaps, nothing pending right now.
-                state = .ok
-                headline = "Up to date"
                 let liveCoverage = watchingUploads && uploads?.coverageGap != true
-                source = liveCoverage ? "Nothing pending · \(reportTime)" : reportTime
-            default:
-                state = .unknown
-                headline = "Status unknown"
-                source = reportTime
+                if liveCoverage { source = "Nothing pending · \(report.source)" }
             }
         }
 
         var details = extra
         if !source.isEmpty { details.append(source) }
-        if let last = lastActivity { details.append("last activity \(RelTime.string(last, now: now))") }
+        if let last = account.lastActivity { details.append("last activity \(RelTime.string(last, now: now))") }
 
-        var status = AccountStatus(config: config, name: name, state: state, headline: headline,
-                                   detail: details.joined(separator: " · "), source: source, pid: pid,
-                                   isLive: live != nil, lastActivity: lastActivity)
+        var status = AccountStatus(config: config, name: account.name, state: state, headline: headline,
+                                   detail: details.joined(separator: " · "), source: source, pid: account.pid,
+                                   isLive: account.exactStatus != nil, lastActivity: account.lastActivity)
+        status.notes = account.notes.joined(separator: " · ")
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first
         status.oldestWaiting = uploads?.oldestWaiting
-        status.uploadsCovered = running && watchingUploads && uploads?.coverageGap != true
+        status.uploadsCovered = account.running && watchingUploads && uploads?.coverageGap != true
         return status
-    }
-
-    static func sameAccount(_ liveName: String, _ config: AccountConfig) -> Bool {
-        let n = normalized(liveName)
-        guard !n.isEmpty else { return false }
-        let folderName = config.folder.lastPathComponent.replacingOccurrences(of: "OneDrive-", with: "")
-        return n == normalized(folderName) || n == normalized(config.fallbackName)
-    }
-
-    private static func normalized(_ s: String) -> String {
-        s.lowercased().filter { $0.isLetter || $0.isNumber }
-    }
-
-    private func diagnostics(_ key: String, force: Bool) -> Diagnostics? {
-        let path = OneDriveFiles.diagnosticsPath(key)
-        let stamp = OneDriveFiles.modificationDate(path)
-        if !force, let cached = diagCache[key], cached.stamp == stamp { return cached.value }
-        let value = OneDriveFiles.diagnostics(at: path)
-        diagCache[key] = (stamp, value)
-        return value
-    }
-
-    private func activity(_ key: String, force: Bool) -> [Activity] {
-        let stamp = OneDriveFiles.activityStamp(key)
-        if !force, let cached = activityCache[key], cached.stamp == stamp { return cached.value }
-        let value = OneDriveFiles.activity(key)
-        activityCache[key] = (stamp, value)
-        return value
     }
 }
 
@@ -280,17 +259,28 @@ final class Store: ObservableObject {
     var accounts: [AccountStatus] { snapshot.accounts }
     var activity: [Activity] { snapshot.activity }
 
+    /// The panel's title and the name VoiceOver gives the icon: the service's own name while there is only
+    /// one, "Cloud Sync" once there are several.
+    var title: String {
+        snapshot.providers.count == 1 ? snapshot.providers[0].id.name : (snapshot.providers.isEmpty ? "OneDrive" : "Cloud Sync")
+    }
+
+    /// Several services: the panel groups accounts under a heading per service.
+    var groupsByService: Bool { snapshot.providers.count > 1 }
+
     var overallState: SyncState {
-        if !snapshot.oneDriveRunning { return .notRunning }
+        if snapshot.providers.isEmpty || !snapshot.stoppedProviders.isEmpty { return .notRunning }
         return snapshot.accounts.map(\.state).max() ?? .ok
     }
 
     var summary: String {
         if snapshot.accounts.isEmpty {
-            return snapshot.oneDriveRunning ? "No synced accounts found" : "OneDrive isn’t running"
+            if let stopped = snapshot.stoppedProviders.first { return "\(stopped.name) isn’t running" }
+            return snapshot.providers.isEmpty ? "OneDrive isn’t running" : "No synced accounts found"
         }
         let attention = snapshot.accounts.filter { $0.state != .ok }
         if attention.isEmpty {
+            if groupsByService { return "Everything is up to date" }
             switch snapshot.accounts.count {
             case 1: return "Up to date"
             case 2: return "Both accounts are up to date"
@@ -302,27 +292,26 @@ final class Store: ObservableObject {
 
     /// Read by VoiceOver on the menu bar icon: one sentence per account.
     var accessibilitySummary: String {
-        if snapshot.accounts.isEmpty { return "OneDrive: \(summary)" }
-        return "OneDrive. " + snapshot.accounts.map { "\($0.name): \($0.headline)." }.joined(separator: " ")
+        if snapshot.accounts.isEmpty { return "\(title): \(summary)" }
+        return "\(title). " + snapshot.accounts.map { "\(spokenName($0)): \($0.headline)." }.joined(separator: " ")
     }
 
     var tooltip: String {
-        if snapshot.accounts.isEmpty { return "OneDrive: \(summary)" }
+        if snapshot.accounts.isEmpty { return "\(title): \(summary)" }
         return snapshot.accounts.map { "\($0.name): \($0.headline)" }.joined(separator: "\n")
     }
 
-    var lidVerdict: LidVerdict {
-        let accounts = snapshot.accounts
-        if !snapshot.oneDriveRunning || accounts.contains(where: { $0.state == .notRunning }) { return .notRunning }
-        if accounts.isEmpty { return .unknown("No OneDrive accounts found") }
-        let failed = accounts.reduce(0) { $0 + $1.uploadsFailed }
-        if failed > 0 { return .failing(failed) }
-        let pending = accounts.reduce(0) { $0 + $1.uploadsPending }
-        if pending > 0 { return .pending(pending) }
-        if let blind = accounts.first(where: { !$0.uploadsCovered }) {
-            return .unknown("Velum may have missed recent changes in \(blind.name)")
-        }
-        return .safe
+    /// "OneDrive, School" once several services share the panel; the name alone otherwise.
+    func spokenName(_ account: AccountStatus) -> String {
+        guard groupsByService, !account.name.hasPrefix(account.provider.name) else { return account.name }
+        return "\(account.provider.name), \(account.name)"
+    }
+
+    var lidVerdict: LidVerdict { snapshot.lidVerdict }
+
+    /// For `Velum --render-panel`: shows a snapshot without starting the live sources.
+    func show(_ snapshot: Snapshot) {
+        self.snapshot = snapshot
     }
 
     func account(for key: String) -> AccountStatus? {
@@ -367,10 +356,10 @@ final class Store: ObservableObject {
                         self.snapshot = next
                     }
                     self.onRefresh?(next)
-                    let folders = Dictionary(next.accounts.map { ($0.config.key, $0.config.folder) },
-                                             uniquingKeysWith: { first, _ in first })
-                    self.transfers.watch(folders)
-                    self.uploadTracker.watch(folders)
+                    let roots = Dictionary(next.accounts.map { ($0.config.key, $0.config.watchRoots) },
+                                           uniquingKeysWith: { first, _ in first })
+                    self.transfers.watch(roots)
+                    self.uploadTracker.watch(roots, recordingUploadsFor: Set(next.accounts.filter { !$0.config.keepsOwnHistory }.map(\.id)))
                     if self.pending {
                         let again = self.pendingForce
                         self.pending = false

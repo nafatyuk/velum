@@ -40,10 +40,25 @@ struct PanelView: View {
             InsetSeparator()
             if store.accounts.isEmpty {
                 emptyState
+            } else if store.groupsByService {
+                // Several services: a heading per service, its accounts under it, in a fixed order (never
+                // sorted by trouble). Service-wide problems sit at the heading's trailing edge.
+                VStack(spacing: 0) {
+                    ForEach(store.snapshot.providers, id: \.id) { provider in
+                        let accounts = store.accounts.filter { $0.provider == provider.id }
+                        if !accounts.isEmpty || provider.isStopped {
+                            ServiceHeading(provider: provider, start: actions.startOneDrive)
+                            ForEach(accounts) { account in
+                                AccountRow(account: account, spokenName: store.spokenName(account), actions: actions)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 5)
             } else {
                 VStack(spacing: 0) {
                     ForEach(store.accounts) { account in
-                        AccountRow(account: account, actions: actions)
+                        AccountRow(account: account, spokenName: account.name, actions: actions)
                     }
                 }
                 .padding(.vertical, 5)
@@ -64,7 +79,7 @@ struct PanelView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 2) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("OneDrive")
+                Text(store.title)
                     .font(.headline)
                 Text(store.summary)
                     .font(.subheadline)
@@ -83,17 +98,19 @@ struct PanelView: View {
                     get: { store.loginItemEnabled },
                     set: { actions.setLoginItem($0) }
                 ))
-                Divider()
-                if !store.snapshot.axTrusted {
-                    Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
-                }
-                Button("Show OneDrive’s Own Icons…") { actions.openMenuBarSettings() }
-                Divider()
-                if store.snapshot.oneDriveRunning {
-                    Button("Restart OneDrive") { actions.restartOneDrive() }
-                    Button("Quit OneDrive") { actions.quitOneDrive() }
-                } else {
-                    Button("Start OneDrive") { actions.startOneDrive() }
+                if store.snapshot.oneDrive != nil || store.snapshot.providers.isEmpty {
+                    Divider()
+                    if !store.snapshot.axTrusted {
+                        Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
+                    }
+                    Button("Show OneDrive’s Own Icons…") { actions.openMenuBarSettings() }
+                    Divider()
+                    if store.snapshot.oneDriveRunning {
+                        Button("Restart OneDrive") { actions.restartOneDrive() }
+                        Button("Quit OneDrive") { actions.quitOneDrive() }
+                    } else {
+                        Button("Start OneDrive") { actions.startOneDrive() }
+                    }
                 }
                 Divider()
                 Button("Quit Velum") { actions.quitApp() }
@@ -114,9 +131,10 @@ struct PanelView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(store.snapshot.oneDriveRunning ? "No synced OneDrive accounts found" : "OneDrive isn’t running")
+            Text(emptyTitle)
                 .font(.body.weight(.medium))
-            Text("Accounts show up here once OneDrive is signed in and syncing.")
+            Text(store.groupsByService ? "Accounts show up here once they’re signed in and syncing."
+                                       : "Accounts show up here once OneDrive is signed in and syncing.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -124,7 +142,12 @@ struct PanelView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: Recent activity, both accounts merged
+    private var emptyTitle: String {
+        if store.groupsByService { return "No synced accounts found" }
+        return store.snapshot.oneDriveRunning ? "No synced OneDrive accounts found" : "OneDrive isn’t running"
+    }
+
+    // MARK: Recent activity, every account merged
 
     private var recent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -147,7 +170,8 @@ struct PanelView: View {
                         item: item,
                         accountName: account?.name ?? item.accountKey,
                         showAccount: store.accounts.count > 1,
-                        folder: folderText(item, account?.config)
+                        folder: folderText(item, account?.config),
+                        seenByVelum: account?.config.keepsOwnHistory == false
                     ) { actions.reveal(item) }
                 }
             }
@@ -156,9 +180,7 @@ struct PanelView: View {
     }
 
     private func folderText(_ item: Activity, _ config: AccountConfig?) -> String {
-        guard let config, let relative = config.relativePath(of: item.path) else { return item.path }
-        let parent = (relative as NSString).deletingLastPathComponent
-        return parent.isEmpty ? "In the top of \(config.folder.lastPathComponent)" : "In \(parent)"
+        config?.location(of: item.path) ?? item.path
     }
 
     // MARK: Banner
@@ -166,13 +188,18 @@ struct PanelView: View {
     private var showsBanner: Bool {
         // The Accessibility tip only appears after the user asks for it from the ••• menu: it helps only
         // while OneDrive's own icons exist, so it shouldn't nag everyone.
-        !store.snapshot.oneDriveRunning
+        oneDriveStoppedBanner
             || (store.exactStatusRequested && !store.snapshot.axTrusted && !store.exactStatusTipDismissed)
     }
 
+    /// With several services, OneDrive not running shows at its heading instead.
+    private var oneDriveStoppedBanner: Bool {
+        store.snapshot.providers.isEmpty || (store.snapshot.oneDrive?.isStopped == true && !store.groupsByService)
+    }
+
     @ViewBuilder private var banner: some View {
-        if !store.snapshot.oneDriveRunning {
-            BannerRow(symbol: "exclamationmark.icloud",
+        if oneDriveStoppedBanner {
+            BannerRow(symbol: "exclamationmark.triangle",
                       text: "OneDrive isn’t running, so nothing is syncing.",
                       button: "Start",
                       action: actions.startOneDrive)
@@ -190,6 +217,8 @@ struct PanelView: View {
 
 struct AccountRow: View {
     let account: AccountStatus
+    /// What VoiceOver calls it: "OneDrive, School" when several services share the panel.
+    let spokenName: String
     let actions: PanelActions
     private let hover = State(initialValue: false)
 
@@ -204,6 +233,13 @@ struct AccountRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+                if !account.notes.isEmpty {
+                    Text(account.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !account.detail.isEmpty {
                     Text(account.detail)
                         .font(.caption)
@@ -223,7 +259,7 @@ struct AccountRow: View {
                         Button("Recycle Bin") { actions.openURL(url) }
                     }
                     if let url = account.config.storageURL {
-                        Button("Manage Storage") { actions.openURL(url) }
+                        Button(account.provider == .iCloud ? "iCloud Settings…" : "Manage Storage") { actions.openURL(url) }
                     }
                     Divider()
                     Button("Copy Folder Path") { actions.copyPath(account.config) }
@@ -246,7 +282,7 @@ struct AccountRow: View {
         .onTapGesture { actions.openFolder(account.config) }
         .padding(.horizontal, 6)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(account.name), \(account.headline)")
+        .accessibilityLabel("\(spokenName), \(account.headline)")
     }
 }
 
@@ -255,6 +291,8 @@ struct ActivityRow: View {
     let accountName: String
     let showAccount: Bool
     let folder: String
+    /// Recorded by Velum itself (iCloud keeps no history Velum can read).
+    var seenByVelum = false
     let action: () -> Void
     private let hover = State(initialValue: false)
 
@@ -286,7 +324,12 @@ struct ActivityRow: View {
         .buttonStyle(.plain)
         .onHover { hover.wrappedValue = $0 }
         .padding(.horizontal, 6)
-        .help(item.isGone ? "\(folder) (opens the nearest folder that still exists)" : "\(folder) (click to show in Finder)")
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        let base = item.isGone ? "\(folder) (opens the nearest folder that still exists)" : "\(folder) (click to show in Finder)"
+        return seenByVelum ? base + ". iCloud entries are uploads Velum saw finish while it was running." : base
     }
 
     private var subtitle: String {
@@ -338,6 +381,38 @@ struct BannerRow: View {
 
 // MARK: - Pieces
 
+/// A service's name over its accounts, in the style of the "Recent" heading. Service-wide trouble sits at
+/// its trailing edge: OneDrive not running (with Start), iCloud storage full.
+struct ServiceHeading: View {
+    let provider: ProviderStatus
+    let start: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(provider.id.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 4)
+            if provider.isStopped {
+                Text("Not running")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                Button("Start", action: start)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.mini)
+            } else if let trouble = provider.trouble {
+                Text(trouble)
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 9)
+        .padding(.bottom, 2)
+    }
+}
+
 /// "Is it safe to close the lid?" Answered from live upload tracking: every local change is in the cloud,
 /// or it isn't, or Velum can't vouch for it.
 struct LidRow: View {
@@ -381,7 +456,7 @@ struct LidRow: View {
         case .safe: "Every change on this Mac is in the cloud."
         case .pending(let n): "\(files(n)) still on the way up."
         case .failing(let n): "\(files(n)) can’t upload. See the account below."
-        case .notRunning: "OneDrive isn’t running, so new changes stay on this Mac."
+        case .notRunning(let name): "\(name) isn’t running, so new changes stay on this Mac."
         case .unknown(let reason): reason + "."
         }
     }
