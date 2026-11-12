@@ -53,6 +53,11 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     /// by the sign-in feature; called on the collector's queue every refresh: return cached figures, never block.
     nonisolated(unsafe) static var signInStorage: (_ email: String) -> GoogleStorage? = { _ in nil }
 
+    /// A short note from the optional Google sign-in for this account ("Waiting for Google sign-in…",
+    /// "Storage not shown · sign in again from the ••• menu"), or nil. Asked only when the Drive cache has no
+    /// figures, like `signInStorage`. Same rules: collector's queue, never blocks.
+    nonisolated(unsafe) static var signInNote: (_ email: String) -> String? = { _ in nil }
+
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         cloudStorage = home.appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
         driveFS = home.appending(path: "Library/Application Support/Google/DriveFS", directoryHint: .isDirectory)
@@ -72,13 +77,18 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         for config in configs {
             var account = AccountEvidence(config: config, name: config.fallbackName)
             account.running = running
-            let storage = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }
-                ?? Self.signInStorage(config.fallbackName)
+            // The Drive cache wins; the optional sign-in is asked only when the cache has nothing, so with the
+            // cache present it makes no request at all.
+            let cached = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }
+            let storage = cached ?? Self.signInStorage(config.fallbackName)
             if let storage {
                 account.notes.append(Self.storageNote(storage))
                 account.notesHelp = Self.storageHelp(storage)
                 account.notesNeedAttention = storage.isFull || storage.isAlmostFull
                 account.storageFull = storage.isFull
+            }
+            if cached == nil, let note = Self.signInNote(config.fallbackName) {
+                account.notes.append(note)
             }
             if running && paused {
                 // Google Drive's own pause, for every account. Waiting files still show as "Paused, N waiting".
