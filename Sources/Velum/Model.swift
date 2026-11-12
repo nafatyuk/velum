@@ -34,6 +34,9 @@ struct AccountStatus: Identifiable, Equatable {
     let detail: String
     /// Facts about the account itself, shown on their own line ("Desktop & Documents included · 1.27 TB free").
     var notes = ""
+    var notesHelp: String?
+    var notesNeedAttention = false
+    var storageFull = false
     /// Where the headline came from: "From OneDrive", "Live from macOS", "OneDrive report, 1:45 PM".
     let source: String
     let pid: pid_t?
@@ -240,6 +243,9 @@ final class Collector: @unchecked Sendable {
                                    detail: details.joined(separator: " · "), source: source, pid: account.pid,
                                    isLive: account.exactStatus != nil, lastActivity: account.lastActivity)
         status.notes = account.notes.joined(separator: " · ")
+        status.notesHelp = account.notesHelp
+        status.notesNeedAttention = account.notesNeedAttention
+        status.storageFull = account.storageFull
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first

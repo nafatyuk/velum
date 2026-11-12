@@ -153,7 +153,7 @@ import Testing
         var shown: [String] = []
         notifier.fallback = { title, _, _ in shown.append(title) }
         let t0 = Fixture.now
-        notifier.userStoppedOneDriveAt = t0
+        notifier.userStopped[.oneDrive] = t0
         notifier.update(snapshot(oneDriveRunning: false), enabled: true, now: t0)
         notifier.update(snapshot(oneDriveRunning: false), enabled: true, now: t0.addingTimeInterval(40))
         #expect(shown.isEmpty)

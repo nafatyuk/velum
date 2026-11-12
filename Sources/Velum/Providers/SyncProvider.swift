@@ -14,6 +14,15 @@ enum ProviderID: String, CaseIterable, Codable {
         }
     }
 
+    /// What the row's menu calls the way back to deleted files.
+    var deletedFilesLabel: String {
+        switch self {
+        case .oneDrive: "Recycle Bin"
+        case .iCloud: "Recover Deleted Files…"
+        case .googleDrive: "Trash"
+        }
+    }
+
     /// The service's own app, which Velum can start when it isn't running. nil: part of macOS.
     var clientBundleID: String? {
         switch self {
@@ -75,6 +84,11 @@ struct AccountEvidence {
     var notes: [String] = []
     /// Since when the provider's own queue has had work in it (Google Drive), for the stuck alert.
     var workingSince: Date?
+    /// Hover text for the notes line, and whether it needs the eye (storage almost full or full).
+    var notesHelp: String?
+    var notesNeedAttention = false
+    /// Out of storage (optional information: an alert and the heading, never the row's state).
+    var storageFull = false
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,

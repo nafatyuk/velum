@@ -2,7 +2,7 @@ import Foundation
 import UserNotifications
 
 /// Notifies when something needs attention: uploads failing, a sync issue a service reports, uploads stuck
-/// for more than 10 minutes, or a sync client (OneDrive) stopping without the user quitting it from Velum. A problem has to
+/// for more than 10 minutes, or a sync app (OneDrive, Google Drive) stopping without the user quitting it from Velum. A problem has to
 /// last 30 seconds before it notifies, it notifies once, and a notified problem gets one follow-up when it
 /// clears. Clicking a notification opens Velum's panel.
 @MainActor
@@ -14,7 +14,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private enum Kind {
-        case failed, issue, stuck, stopped, queued
+        case failed, issue, stuck, stopped, queued, storage
 
         func resolved(service: String) -> String {
             switch self {
@@ -22,6 +22,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .issue: "\(service) no longer reports a sync problem."
             case .stuck: "The waiting uploads have gone through."
             case .queued: "\(service) has caught up."
+            case .storage: "There’s room for new files again."
             case .stopped: "\(service) is running again."
             }
         }
@@ -40,8 +41,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private let stuckAfter: TimeInterval = 10 * 60
     private let userStopGrace: TimeInterval = 120
 
-    /// Set when the user quits or restarts OneDrive from Velum, so that isn't reported as a problem.
-    var userStoppedOneDriveAt: Date?
+    /// When the user last quit or restarted each service's app from Velum, so that isn't reported as a problem.
+    var userStopped: [ProviderID: Date] = [:]
     var onOpen: (() -> Void)?
 
     /// Whether macOS lets Velum post notifications. It only does for apps signed with an Apple-issued
@@ -80,10 +81,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         })
 
         var current: [String: Problem] = [:]
-        let userStopped = userStoppedOneDriveAt.map { now.timeIntervalSince($0) < userStopGrace } ?? false
+        func stoppedByUser(_ provider: ProviderID) -> Bool {
+            userStopped[provider].map { now.timeIntervalSince($0) < userStopGrace } ?? false
+        }
 
         let stopped = Set(snapshot.stoppedProviders)
-        for provider in stopped where !(provider == .oneDrive && userStopped) {
+        for provider in stopped where !stoppedByUser(provider) {
             current[provider.rawValue] = Problem(kind: .stopped, title: "\(provider.name) stopped",
                                                  body: "Changes on this Mac aren’t syncing. Open Velum to start it again.")
         }
@@ -102,10 +105,16 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             } else if let since = account.workingSince, now.timeIntervalSince(since) > stuckAfter {
                 current[account.id] = Problem(kind: .queued, title: "\(account.name): changes are stuck",
                                               body: "\(account.provider.name) has had changes queued since \(RelTime.clock(since)).")
-            } else if account.state == .notRunning, !(account.provider == .oneDrive && userStopped) {
+            } else if account.state == .notRunning, !stoppedByUser(account.provider) {
                 current[account.id] = Problem(kind: .stopped, title: "\(account.name) isn’t syncing",
                                               body: "\(account.provider.name) isn’t running for this account.")
             }
+        }
+
+        // Storage is separate from sync problems (its own key), so both can be true at once.
+        for account in snapshot.accounts where account.storageFull {
+            current["storage:\(account.id)"] = Problem(kind: .storage, title: "\(account.provider.name) storage full · \(account.name)",
+                                                       body: "New files won’t upload until space is freed.")
         }
 
         for (key, problem) in current {
@@ -124,10 +133,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             episodes[key] = nil
             guard episode.notified, enabled else { continue }
             // A service or account that was removed (uninstalled, signed out) isn't "resolved": it's gone.
+            let accountKey = key.hasPrefix("storage:") ? String(key.dropFirst("storage:".count)) : key
             let stillThere = ProviderID(rawValue: key).map { id in snapshot.providers.contains { $0.id == id } }
-                ?? snapshot.accounts.contains { $0.id == key }
+                ?? snapshot.accounts.contains { $0.id == accountKey }
             guard stillThere else { continue }
-            let account = snapshot.accounts.first { $0.id == key }
+            let account = snapshot.accounts.first { $0.id == accountKey }
             let service = ProviderID(rawValue: key)?.name ?? account?.provider.name ?? "OneDrive"
             let name = ProviderID(rawValue: key)?.name ?? account?.name ?? service
             post(key, title: "\(name): resolved", body: episode.kind.resolved(service: service), sound: false)

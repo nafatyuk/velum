@@ -14,10 +14,9 @@ struct PanelActions {
     var openURL: @MainActor (URL) -> Void
     var reveal: @MainActor (Activity) -> Void
     var copyPath: @MainActor (AccountConfig) -> Void
-    var startOneDrive: @MainActor () -> Void
     var startClient: @MainActor (ProviderID) -> Void
-    var restartOneDrive: @MainActor () -> Void
-    var quitOneDrive: @MainActor () -> Void
+    var restartClient: @MainActor (ProviderID) -> Void
+    var quitClient: @MainActor (ProviderID) -> Void
     var openMenuBarSettings: @MainActor () -> Void
     var enableExactStatus: @MainActor () -> Void
     var restartApp: @MainActor () -> Void
@@ -88,7 +87,8 @@ struct PanelView: View {
                         ServiceHeading(provider: provider, accounts: accounts) { actions.startClient(provider.id) }
                         ForEach(accounts) { account in
                             AccountRow(account: account, spokenName: store.spokenName(account),
-                                       compact: store.compactRows && account.state == .ok, actions: actions)
+                                       compact: store.compactRows && account.state == .ok && !account.notesNeedAttention,
+                                       actions: actions)
                         }
                     }
                 }
@@ -122,16 +122,17 @@ struct PanelView: View {
                     set: { actions.setLoginItem($0) }
                 ))
                 Button("Menu Bar Settings…") { actions.openMenuBarSettings() }
-                if store.snapshot.oneDrive != nil {
+                if store.snapshot.oneDrive != nil, !store.snapshot.axTrusted {
+                    Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
+                }
+                // Start, Restart and Quit for every service that has an app of its own, in panel order.
+                ForEach(store.snapshot.providers.filter { $0.id.clientBundleID != nil }, id: \.id) { provider in
                     Divider()
-                    if !store.snapshot.axTrusted {
-                        Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
-                    }
-                    if store.snapshot.oneDriveRunning {
-                        Button("Restart OneDrive") { actions.restartOneDrive() }
-                        Button("Quit OneDrive") { actions.quitOneDrive() }
+                    if provider.clientRunning == true {
+                        Button("Restart \(provider.id.name)") { actions.restartClient(provider.id) }
+                        Button("Quit \(provider.id.name)") { actions.quitClient(provider.id) }
                     } else {
-                        Button("Start OneDrive") { actions.startOneDrive() }
+                        Button("Start \(provider.id.name)") { actions.startClient(provider.id) }
                     }
                 }
                 Divider()
@@ -283,9 +284,10 @@ struct AccountRow: View {
                 if !account.notes.isEmpty {
                     Text(account.notes)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(account.notesNeedAttention ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                        .help(account.notesHelp ?? "")
                 }
                 if !account.detail.isEmpty {
                     Text(account.detail)
@@ -305,7 +307,7 @@ struct AccountRow: View {
                     Button("Open in Finder") { actions.openFolder(account.config) }
                     Button("View Online") { actions.openURL(account.config.webURL) }
                     if let url = account.config.recycleBinURL {
-                        Button(account.provider == .googleDrive ? "Trash" : "Recycle Bin") { actions.openURL(url) }
+                        Button(account.provider.deletedFilesLabel) { actions.openURL(url) }
                     }
                     if let url = account.config.storageURL {
                         Button(account.provider == .iCloud ? "iCloud Settings…" : "Manage Storage") { actions.openURL(url) }
