@@ -93,7 +93,7 @@ final class UploadTracker: @unchecked Sendable {
         }
         if let data = defaults.data(forKey: completedKey),
            let saved = try? JSONDecoder().decode([Activity].self, from: data) {
-            completed = saved
+            completed = saved.filter { Self.isSyncable($0.path) }   // drops entries an older build mis-recorded
         }
     }
 
@@ -242,6 +242,7 @@ final class UploadTracker: @unchecked Sendable {
 
     /// Names OneDrive never uploads. File Provider's own exclusion flag catches the rest.
     static func isSyncable(_ path: String) -> Bool {
+        if path.contains("/.Trash/") { return false }
         let name = (path as NSString).lastPathComponent
         if name == ".DS_Store" || name == "Icon\r" || name.hasPrefix("._") || name.hasPrefix("~$") { return false }
         let ext = (name as NSString).pathExtension.lowercased()

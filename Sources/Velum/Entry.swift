@@ -35,8 +35,16 @@ enum DebugDump {
     /// background: only the layout and text are real.
     @MainActor
     static func renderPanel(to path: String, dark: Bool) {
-        let (snapshot, _, _) = collectOnce()
+        var (snapshot, _, _) = collectOnce()
+        // --many: three more copies of every account, to check the panel's height cap (--max-height N).
+        if CommandLine.arguments.contains("--many") {
+            snapshot.accounts += (2...4).flatMap { i in snapshot.accounts.map { $0.copy(suffix: i) } }
+        }
         let store = AppModel.store
+        if let i = CommandLine.arguments.firstIndex(of: "--max-height"), i + 1 < CommandLine.arguments.count,
+           let h = Double(CommandLine.arguments[i + 1]) {
+            store.maxPanelHeight = h
+        }
         store.show(snapshot)
         store.loginItemEnabled = LoginItem.isEnabled
         NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -45,6 +53,12 @@ enum DebugDump {
             .environment(\.colorScheme, dark ? .dark : .light)
         let host = NSHostingView(rootView: view)
         host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        // Two passes: the panel measures its own parts and may switch to scrolling after the first.
+        for _ in 0..<3 {
+            host.frame.size = host.fittingSize
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        }
         host.frame.size = host.fittingSize
         host.layoutSubtreeIfNeeded()
         guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
@@ -81,6 +95,8 @@ enum DebugDump {
                 print("OneDrive running: \(snapshot.oneDriveRunning) · Accessibility trusted: \(snapshot.axTrusted) · icon text readable: \(snapshot.liveItemsFound)")
             case .iCloud:
                 print("iCloud Drive: on\(provider.trouble.map { " · \($0)" } ?? "")")
+            case .googleDrive:
+                print("Google Drive running: \(provider.clientRunning == true)\(provider.trouble.map { " · \($0)" } ?? "")")
             }
         }
         for account in snapshot.accounts {
@@ -107,4 +123,18 @@ enum DebugDump {
     }
 
     private static func print(_ line: String) { Swift.print(line) }
+}
+
+private extension AccountStatus {
+    /// A renamed copy, for `--render-panel --many`.
+    func copy(suffix: Int) -> AccountStatus {
+        let c = config
+        let config = AccountConfig(key: "\(c.key)-\(suffix)", provider: c.provider, folder: c.folder, watchRoots: c.watchRoots,
+                                   places: c.places, fallbackName: c.fallbackName, webURL: c.webURL,
+                                   recycleBinURL: c.recycleBinURL, storageURL: c.storageURL, keepsOwnHistory: c.keepsOwnHistory)
+        var s = AccountStatus(config: config, name: "\(name) \(suffix)", state: state, headline: headline, detail: detail,
+                              notes: notes, source: source, pid: pid, isLive: isLive, lastActivity: lastActivity)
+        s.uploadsCovered = uploadsCovered
+        return s
+    }
 }

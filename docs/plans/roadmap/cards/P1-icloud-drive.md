@@ -1,6 +1,6 @@
 # P1 · iCloud Drive
 
-**Bucket** P Providers · **Part two** (pulled forward at the user's request) · **Status: built** November 12, 2026; live check after install · **Waits for** C2 · **Runs alongside** C3, T1, A5, A6, S2 · **Feeds** S1, G2, G3
+**Bucket** P Providers · **Part two** (pulled forward at the user's request) · **Status: done** November 12, 2026 (live-checked in the installed app) · **Waits for** C2 · **Runs alongside** C3, T1, A5, A6, S2 · **Feeds** S1, G2, G3
 
 ## Brief
 
@@ -95,4 +95,4 @@ Other facts:
 
 - **A height cap** (Codex): pin the header and lid line and scroll the rest when the panel is taller than the screen. It isn't needed at 662 pt.
 - **A4's legend** should say that iCloud's Recent shows only uploads Velum saw (Fable's risk 3).
-- **The live check after install:** a probe file shows waiting → uploading → uploaded in the panel, the lid line follows it, and it appears in Recent.
+- **The live check after install: done, November 12.** A test file in iCloud Drive was recorded by the installed app as uploaded, so it appears in Recent, and was then deleted. The panel itself was checked with `--render-panel`, since nobody was awake to open it.

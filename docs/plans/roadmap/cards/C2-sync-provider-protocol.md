@@ -149,6 +149,14 @@ Swift Testing's `@Test` macro loads with the Command Line Tools only when `Packa
 
 **Characterization, honestly:** the tests were written after the move. They are pinned to the strings the old code produced, and checked against old-versus-new dumps. They were not run on the old code first.
 
+**Changed later the same night (P3):**
+- The panel now always says "Cloud Sync" with a heading per service, even with one service, so the single-OneDrive look above is gone on purpose.
+- A service only counts as present with a live account.
+- `isLiveCloudFolder(_:)` in `SyncProvider.swift` is the shared check for a live File Provider folder.
+- `ProviderID.clientBundleID` drives Start for any service.
+
+See [P3's hand-off](P3-google-drive.md#hand-off).
+
 **For later cards:**
 - `Velum --render-panel <file.png> [--dark]` draws the real panel with live data into an image, without replacing the running app. Use it for A3, A4 and A6's screenshots.
 - `Store.show(_:)` feeds it a snapshot.

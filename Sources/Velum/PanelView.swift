@@ -15,6 +15,7 @@ struct PanelActions {
     var reveal: @MainActor (Activity) -> Void
     var copyPath: @MainActor (AccountConfig) -> Void
     var startOneDrive: @MainActor () -> Void
+    var startClient: @MainActor (ProviderID) -> Void
     var restartOneDrive: @MainActor () -> Void
     var quitOneDrive: @MainActor () -> Void
     var openMenuBarSettings: @MainActor () -> Void
@@ -31,40 +32,20 @@ struct PanelView: View {
     let actions: PanelActions
 
     private let recentLimit = 6
+    // Heights measured as laid out, to cap the panel at the screen's height (any number of accounts).
+    private let topHeight = State(initialValue: CGFloat(0))
+    private let bodyHeight = State(initialValue: CGFloat(0))
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            InsetSeparator()
-            LidRow(verdict: store.lidVerdict)
-            InsetSeparator()
-            if store.accounts.isEmpty {
-                emptyState
-            } else if store.groupsByService {
-                // Several services: a heading per service, its accounts under it, in a fixed order (never
-                // sorted by trouble). Service-wide problems sit at the heading's trailing edge.
-                VStack(spacing: 0) {
-                    ForEach(store.snapshot.providers, id: \.id) { provider in
-                        let accounts = store.accounts.filter { $0.provider == provider.id }
-                        if !accounts.isEmpty || provider.isStopped {
-                            ServiceHeading(provider: provider, start: actions.startOneDrive)
-                            ForEach(accounts) { account in
-                                AccountRow(account: account, spokenName: store.spokenName(account), actions: actions)
-                            }
-                        }
-                    }
-                }
-                .padding(.bottom, 5)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(store.accounts) { account in
-                        AccountRow(account: account, spokenName: account.name, actions: actions)
-                    }
-                }
-                .padding(.vertical, 5)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                InsetSeparator()
+                LidRow(verdict: store.lidVerdict)
+                InsetSeparator()
             }
-            InsetSeparator()
-            recent
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { topHeight.wrappedValue = $0 }
+            scrollingBody
             if showsBanner {
                 InsetSeparator()
                 banner
@@ -72,6 +53,48 @@ struct PanelView: View {
         }
         .frame(width: 340)
         .containerShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// The accounts and Recent. They scroll, under a pinned header and lid line, only when the whole panel
+    /// would be taller than the screen.
+    @ViewBuilder private var scrollingBody: some View {
+        let room = store.maxPanelHeight - topHeight.wrappedValue - (showsBanner ? 64 : 0)
+        let content = VStack(alignment: .leading, spacing: 0) {
+            accountsSection
+            InsetSeparator()
+            recent
+        }
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { bodyHeight.wrappedValue = $0 }
+        if bodyHeight.wrappedValue > room, room > 120 {
+            ScrollView(.vertical) { content }
+                .frame(height: room)
+        } else {
+            content
+        }
+    }
+
+    /// A heading per service with its accounts under it, in a fixed order (never sorted by trouble), even
+    /// when only one service is left, so services coming and going never rearrange the panel. Service-wide
+    /// problems (not running, storage full) sit at the heading's trailing edge. With many accounts, healthy
+    /// rows shrink to one line; any row that needs attention keeps its full layout.
+    @ViewBuilder private var accountsSection: some View {
+        if store.snapshot.providers.isEmpty {
+            emptyState
+        } else {
+            VStack(spacing: 0) {
+                ForEach(store.snapshot.providers, id: \.id) { provider in
+                    let accounts = store.accounts.filter { $0.provider == provider.id }
+                    if !accounts.isEmpty || provider.isStopped {
+                        ServiceHeading(provider: provider, accounts: accounts) { actions.startClient(provider.id) }
+                        ForEach(accounts) { account in
+                            AccountRow(account: account, spokenName: store.spokenName(account),
+                                       compact: store.compactRows && account.state == .ok, actions: actions)
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 5)
+        }
     }
 
     // MARK: Header
@@ -98,13 +121,12 @@ struct PanelView: View {
                     get: { store.loginItemEnabled },
                     set: { actions.setLoginItem($0) }
                 ))
-                if store.snapshot.oneDrive != nil || store.snapshot.providers.isEmpty {
+                Button("Menu Bar Settings…") { actions.openMenuBarSettings() }
+                if store.snapshot.oneDrive != nil {
                     Divider()
                     if !store.snapshot.axTrusted {
                         Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
                     }
-                    Button("Show OneDrive’s Own Icons…") { actions.openMenuBarSettings() }
-                    Divider()
                     if store.snapshot.oneDriveRunning {
                         Button("Restart OneDrive") { actions.restartOneDrive() }
                         Button("Quit OneDrive") { actions.quitOneDrive() }
@@ -131,20 +153,14 @@ struct PanelView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(emptyTitle)
+            Text("No cloud accounts found")
                 .font(.body.weight(.medium))
-            Text(store.groupsByService ? "Accounts show up here once they’re signed in and syncing."
-                                       : "Accounts show up here once OneDrive is signed in and syncing.")
+            Text("OneDrive, iCloud Drive and Google Drive accounts show up here once they’re signed in and syncing.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-    }
-
-    private var emptyTitle: String {
-        if store.groupsByService { return "No synced accounts found" }
-        return store.snapshot.oneDriveRunning ? "No synced OneDrive accounts found" : "OneDrive isn’t running"
     }
 
     // MARK: Recent activity, every account merged
@@ -188,28 +204,18 @@ struct PanelView: View {
     private var showsBanner: Bool {
         // The Accessibility tip only appears after the user asks for it from the ••• menu: it helps only
         // while OneDrive's own icons exist, so it shouldn't nag everyone.
-        oneDriveStoppedBanner
-            || (store.exactStatusRequested && !store.snapshot.axTrusted && !store.exactStatusTipDismissed)
+        store.snapshot.oneDrive != nil && store.exactStatusRequested && !store.snapshot.axTrusted
+            && !store.exactStatusTipDismissed
     }
 
-    /// With several services, OneDrive not running shows at its heading instead.
-    private var oneDriveStoppedBanner: Bool {
-        store.snapshot.providers.isEmpty || (store.snapshot.oneDrive?.isStopped == true && !store.groupsByService)
-    }
-
-    @ViewBuilder private var banner: some View {
-        if oneDriveStoppedBanner {
-            BannerRow(symbol: "exclamationmark.triangle",
-                      text: "OneDrive isn’t running, so nothing is syncing.",
-                      button: "Start",
-                      action: actions.startOneDrive)
-        } else {
-            BannerRow(symbol: "text.viewfinder",
-                      text: "Switch on Velum in Accessibility, then restart it.",
-                      button: "Restart",
-                      action: actions.restartApp,
-                      dismiss: actions.dismissExactStatusTip)
-        }
+    /// A stopped service shows "Not running" and Start at its own heading; the banner is only the
+    /// exact-status tip, after the user asks for it.
+    private var banner: some View {
+        BannerRow(symbol: "text.viewfinder",
+                  text: "Switch on Velum in Accessibility, then restart it.",
+                  button: "Restart",
+                  action: actions.restartApp,
+                  dismiss: actions.dismissExactStatusTip)
     }
 }
 
@@ -219,15 +225,56 @@ struct AccountRow: View {
     let account: AccountStatus
     /// What VoiceOver calls it: "OneDrive, School" when several services share the panel.
     let spokenName: String
+    /// One line (name and headline) for a healthy account when there are many.
+    var compact = false
     let actions: PanelActions
     private let hover = State(initialValue: false)
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             StatePlatter(state: account.state)
+            if compact {
+                // The headline goes when the name needs the room (the check mark already says it).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        name.fixedSize()
+                        Text(account.headline)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                    name
+                }
+            } else {
+                details
+            }
+            Spacer(minLength: 4)
+            buttons
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 2)
+        .padding(.vertical, compact ? 3 : 6)
+        .background(HoverHighlight(isOn: hover.wrappedValue))
+        .contentShape(Rectangle())
+        .onHover { hover.wrappedValue = $0 }
+        .onTapGesture { actions.openFolder(account.config) }
+        .padding(.horizontal, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(spokenName), \(account.headline)")
+    }
+
+    /// Long names (Google accounts are email addresses) lose their middle, never their domain.
+    private var name: some View {
+        Text(account.name)
+            .font(.body.weight(.semibold))
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(account.name)
+    }
+
+    private var details: some View {
             VStack(alignment: .leading, spacing: 1) {
-                Text(account.name)
-                    .font(.body.weight(.semibold))
+                name
                 Text(account.headline)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -248,7 +295,9 @@ struct AccountRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer(minLength: 4)
+    }
+
+    private var buttons: some View {
             HStack(spacing: 0) {
                 CircleIconButton(systemName: "folder", help: "Open in Finder") { actions.openFolder(account.config) }
                 CircleIconButton(systemName: "globe", help: "View online") { actions.openURL(account.config.webURL) }
@@ -256,7 +305,7 @@ struct AccountRow: View {
                     Button("Open in Finder") { actions.openFolder(account.config) }
                     Button("View Online") { actions.openURL(account.config.webURL) }
                     if let url = account.config.recycleBinURL {
-                        Button("Recycle Bin") { actions.openURL(url) }
+                        Button(account.provider == .googleDrive ? "Trash" : "Recycle Bin") { actions.openURL(url) }
                     }
                     if let url = account.config.storageURL {
                         Button(account.provider == .iCloud ? "iCloud Settings…" : "Manage Storage") { actions.openURL(url) }
@@ -272,17 +321,6 @@ struct AccountRow: View {
                 .fixedSize()
                 .help("More for \(account.name)")
             }
-        }
-        .padding(.leading, 8)
-        .padding(.trailing, 2)
-        .padding(.vertical, 6)
-        .background(HoverHighlight(isOn: hover.wrappedValue))
-        .contentShape(Rectangle())
-        .onHover { hover.wrappedValue = $0 }
-        .onTapGesture { actions.openFolder(account.config) }
-        .padding(.horizontal, 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(spokenName), \(account.headline)")
     }
 }
 
@@ -385,7 +423,15 @@ struct BannerRow: View {
 /// its trailing edge: OneDrive not running (with Start), iCloud storage full.
 struct ServiceHeading: View {
     let provider: ProviderStatus
+    let accounts: [AccountStatus]
     let start: () -> Void
+
+    /// "3 accounts", or "2 of 3 up to date" when some need attention.
+    private var count: String? {
+        guard accounts.count > 1 else { return nil }
+        let fine = accounts.filter { $0.state == .ok }.count
+        return fine == accounts.count ? "\(accounts.count) accounts" : "\(fine) of \(accounts.count) up to date"
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -401,10 +447,15 @@ struct ServiceHeading: View {
                 Button("Start", action: start)
                     .buttonStyle(.glassProminent)
                     .controlSize(.mini)
+                    .accessibilityLabel("Start \(provider.id.name)")
             } else if let trouble = provider.trouble {
                 Text(trouble)
                     .font(.subheadline)
                     .foregroundStyle(.orange)
+            } else if let count {
+                Text(count)
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 14)
@@ -445,7 +496,7 @@ struct LidRow: View {
     private var title: String {
         switch verdict {
         case .safe: "Safe to close the lid"
-        case .pending: "Wait before closing the lid"
+        case .pending, .busy: "Wait before closing the lid"
         case .failing, .notRunning: "Not everything is in the cloud"
         case .unknown: "Can’t vouch for every change"
         }
@@ -455,6 +506,7 @@ struct LidRow: View {
         switch verdict {
         case .safe: "Every change on this Mac is in the cloud."
         case .pending(let n): "\(files(n)) still on the way up."
+        case .busy(let name): "\(name) is still syncing changes."
         case .failing(let n): "\(files(n)) can’t upload. See the account below."
         case .notRunning(let name): "\(name) isn’t running, so new changes stay on this Mac."
         case .unknown(let reason): reason + "."
@@ -464,7 +516,7 @@ struct LidRow: View {
     private var symbol: String {
         switch verdict {
         case .safe: "laptopcomputer"
-        case .pending: "arrow.up.circle.fill"
+        case .pending, .busy: "arrow.up.circle.fill"
         case .failing, .notRunning: "exclamationmark.triangle.fill"
         case .unknown: "questionmark.circle"
         }
@@ -473,7 +525,7 @@ struct LidRow: View {
     private var color: Color {
         switch verdict {
         case .safe: .green
-        case .pending: .blue
+        case .pending, .busy: .blue
         case .failing, .notRunning: .orange
         case .unknown: .secondary
         }

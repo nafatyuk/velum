@@ -8,7 +8,9 @@ Settings or with a menu bar manager) also hides whether your files are synced.
 
 Velum merges them instead of hiding them: one native menu bar icon and one Liquid Glass panel that show
 every account's sync status, recent activity across all of them, and quick ways into each account.
-iCloud Drive, which has no menu bar icon at all, joins them in the same panel.
+iCloud Drive, which has no menu bar icon at all, and every Google Drive account join them in the same
+panel. Services and accounts come and go on their own: sign one out or uninstall an app, and the rest
+keeps working.
 
 *A velum is a thin veil of cloud that stretches across several separate clouds and joins them.*
 
@@ -23,6 +25,8 @@ iCloud Drive, which has no menu bar icon at all, joins them in the same panel.
 - **iCloud Drive too.** Its own row under an iCloud heading, with the same live upload tracking, the
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.
+- **Google Drive too.** One row per signed-in Google account (shown by email), with the same live upload
+  tracking. "Up to date" also needs Google Drive's own queue of pending work to be empty.
 - **Every account at a glance.** Live status for each account: files uploading, waiting to upload or
   failing (with the reason), downloads in progress, and when it last did something. Each status says
   where it came from, and Velum never says "Up to date" without evidence.
@@ -31,9 +35,9 @@ iCloud Drive, which has no menu bar icon at all, joins them in the same panel.
 - **Quick actions.** Open an account's folder or its web view, its recycle bin (work and school
   accounts), storage page, restart or quit OneDrive, open at login.
 
-Velum needs no special permissions, never modifies OneDrive's or iCloud's files or settings, and makes
-no network connections. The only things it does to OneDrive are the Restart and Quit OneDrive commands
-you click; for iCloud it only reads.
+Velum needs no special permissions, never modifies any sync app's files or settings, and makes no
+network connections. The only things it does to OneDrive are the Restart and Quit OneDrive commands you
+click, and Start for a sync app that isn't running; everything else it only reads.
 
 ## Requirements
 
@@ -80,6 +84,8 @@ Each account's status line names its source:
   now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy.
 - **OneDrive report, 9:35 AM.** Account-wide states such as Paused or Sync issue come only from that hourly
   report, so they can be up to an hour old.
+- **Nothing pending · Google Drive's queue empty.** For Google Drive, "Up to date" means nothing is moving
+  or waiting right now and Google Drive's own list of pending work is empty.
 - **Nothing pending · iCloud status, 9:35 AM.** For iCloud Drive, "Up to date" means nothing is moving
   or waiting right now and macOS's `brctl status`, checked every 10 minutes, calls iCloud Drive caught up.
 - **From OneDrive.** OneDrive's own icon text, when you've turned that option on and its icons exist.
@@ -100,6 +106,8 @@ keystrokes.
 | OneDrive's menu bar item titles (Accessibility, optional) | OneDrive's exact wording, while its icons exist |
 | FSEvents and per-file sync flags for iCloud Drive (and `~/Desktop`, `~/Documents` when they're in iCloud) | iCloud's live uploads, waiting files, upload errors |
 | `/usr/bin/brctl status` and `brctl quota` | iCloud Drive's account-wide state and free storage |
+| FSEvents and per-file sync flags for each `~/Library/CloudStorage/GoogleDrive-<email>` folder | Google Drive's live uploads, waiting files, upload errors |
+| The `operations` table in `~/Library/Application Support/Google/DriveFS/<account>/metadata_sqlite_db` | whether Google Drive still has work queued |
 
 To see what Velum sees without opening it:
 
@@ -139,8 +147,11 @@ an Apple-issued certificate uses system notifications automatically.
   icon badge treats it as unknown.
 - **OneDrive's own panel** (Pause syncing, Settings) can't be opened while its icons are hidden. Use
   Velum's ••• → Show OneDrive's Own Icons… to switch them back on when you need it.
-- **iCloud's Recent list is partial.** It shows only uploads Velum saw finish while it was running, not
-  downloads or changes from your other devices.
+- **Google Drive's mirror mode isn't covered.** Velum watches Google Drive's streamed folders (the
+  default). A My Drive set to "Mirror files" lives outside them. Velum doesn't use the Google Drive API,
+  so it doesn't show Google storage; Manage Storage opens it on the web.
+- **iCloud's and Google Drive's Recent lists are partial.** They show only uploads Velum saw finish
+  while it was running, not downloads or changes from your other devices.
 - **Personal accounts have no recycle bin link**, because OneDrive offers no stable address for it.
   Storage totals aren't stored locally, so Manage Storage opens OneDrive's web page.
 
@@ -169,4 +180,4 @@ MIT. See [LICENSE](LICENSE).
 
 Velum is an independent project. It is not affiliated with, endorsed or sponsored by Microsoft.
 Microsoft and OneDrive are trademarks of the Microsoft group of companies. Apple, iCloud and iCloud Drive
-are trademarks of Apple Inc.
+are trademarks of Apple Inc. Google Drive is a trademark of Google LLC.

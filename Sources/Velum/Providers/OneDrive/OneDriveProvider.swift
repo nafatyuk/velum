@@ -12,10 +12,9 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
     private var diagCache: [String: (stamp: Date?, value: Diagnostics?)] = [:]
     private var activityCache: [String: (stamp: Date?, value: [Activity])] = [:]
     private let defaults = UserDefaults.standard
-    private lazy var installed = NSWorkspace.shared.urlForApplication(withBundleIdentifier: oneDriveBundleID) != nil
 
     func gather(force: Bool, now: Date) -> ProviderEvidence {
-        if force || configs.isEmpty || now.timeIntervalSince(lastDiscovery) > 60 {
+        if force || now.timeIntervalSince(lastDiscovery) > 60 {
             configs = OneDriveFiles.discoverAccounts()
             lastDiscovery = now
         }
@@ -35,7 +34,9 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
 
         let live = LiveStatus.read()
         var evidence = ProviderEvidence()
-        evidence.present = installed || !configs.isEmpty || !apps.isEmpty
+        // Present only with at least one live account: OneDrive installed but signed out of everything, or
+        // uninstalled with its settings left behind, shows nothing rather than an error.
+        evidence.present = !configs.isEmpty
         evidence.clientRunning = !apps.isEmpty
         evidence.axTrusted = LiveStatus.isTrusted
         evidence.liveItemsFound = !live.isEmpty

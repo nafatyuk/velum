@@ -14,13 +14,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private enum Kind {
-        case failed, issue, stuck, stopped
+        case failed, issue, stuck, stopped, queued
 
         func resolved(service: String) -> String {
             switch self {
             case .failed: "No files are failing to upload now."
             case .issue: "\(service) no longer reports a sync problem."
             case .stuck: "The waiting uploads have gone through."
+            case .queued: "\(service) has caught up."
             case .stopped: "\(service) is running again."
             }
         }
@@ -63,7 +64,21 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Accounts with uploads not yet in the cloud, as of the last update, so an account that disappears
+    /// (signed out, disconnected) with work pending says so once instead of vanishing silently.
+    private var unfinished: [String: (name: String, files: Int)] = [:]
+
     func update(_ snapshot: Snapshot, enabled: Bool, now: Date = Date()) {
+        let present = Set(snapshot.accounts.map(\.id))
+        for (key, last) in unfinished where !present.contains(key) && enabled {
+            post(key, title: "\(last.name) was disconnected",
+                 body: "\(Self.files(last.files)) hadn’t reached the cloud when it went away.", sound: true)
+        }
+        unfinished = Dictionary(uniqueKeysWithValues: snapshot.accounts.compactMap { account in
+            let files = account.uploadsPending + account.uploadsFailed
+            return files > 0 ? (account.id, (account.name, files)) : nil
+        })
+
         var current: [String: Problem] = [:]
         let userStopped = userStoppedOneDriveAt.map { now.timeIntervalSince($0) < userStopGrace } ?? false
 
@@ -84,6 +99,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                       now.timeIntervalSince(since) > stuckAfter {
                 current[account.id] = Problem(kind: .stuck, title: "\(account.name): uploads are stuck",
                                               body: "\(Self.files(account.uploadsPending)) waiting since \(RelTime.clock(since)).")
+            } else if let since = account.workingSince, now.timeIntervalSince(since) > stuckAfter {
+                current[account.id] = Problem(kind: .queued, title: "\(account.name): changes are stuck",
+                                              body: "\(account.provider.name) has had changes queued since \(RelTime.clock(since)).")
             } else if account.state == .notRunning, !(account.provider == .oneDrive && userStopped) {
                 current[account.id] = Problem(kind: .stopped, title: "\(account.name) isn’t syncing",
                                               body: "\(account.provider.name) isn’t running for this account.")
@@ -105,6 +123,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         for (key, episode) in episodes where current[key] == nil {
             episodes[key] = nil
             guard episode.notified, enabled else { continue }
+            // A service or account that was removed (uninstalled, signed out) isn't "resolved": it's gone.
+            let stillThere = ProviderID(rawValue: key).map { id in snapshot.providers.contains { $0.id == id } }
+                ?? snapshot.accounts.contains { $0.id == key }
+            guard stillThere else { continue }
             let account = snapshot.accounts.first { $0.id == key }
             let service = ProviderID(rawValue: key)?.name ?? account?.provider.name ?? "OneDrive"
             let name = ProviderID(rawValue: key)?.name ?? account?.name ?? service

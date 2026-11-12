@@ -181,6 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Sizes the panel to its content and pins it under the menu bar icon.
     private func fitPanel(force: Bool = false) {
         guard let p = panel, let host, isPanelShown || force else { return }
+        if let visible = (statusItem.button?.window?.screen ?? NSScreen.main)?.visibleFrame {
+            let cap = (visible.height - 12).rounded()
+            if AppModel.store.maxPanelHeight != cap { AppModel.store.maxPanelHeight = cap }
+        }
         host.layoutSubtreeIfNeeded()
         let size = host.fittingSize
         guard size.width > 0, size.height > 0 else { return }
@@ -248,6 +252,10 @@ enum AppModel {
             OneDriveControl.launch()
             store.refresh(force: true)
         },
+        startClient: { provider in
+            if let id = provider.clientBundleID { ClientControl.launch(bundleID: id) }
+            store.refresh(force: true)
+        },
         restartOneDrive: {
             notifier.userStoppedOneDriveAt = Date()
             OneDriveControl.restart { store.refresh(force: true) }
@@ -307,7 +315,7 @@ enum StatusIcon {
         case .notRunning: "xmark"
         }
 
-        let cloud = NSImage(systemSymbolName: "cloud", accessibilityDescription: "OneDrive")!
+        let cloud = NSImage(systemSymbolName: "cloud", accessibilityDescription: "Velum")!
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))!
         let size = NSSize(width: 24, height: 18)
 
@@ -368,14 +376,20 @@ enum SettingsPane {
 }
 
 @MainActor
-enum OneDriveControl {
-    static var appURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: oneDriveBundleID) }
-
-    static func launch() {
-        guard let url = appURL else { return }
+enum ClientControl {
+    /// Starts a sync service's app in the background.
+    static func launch(bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: nil)
+    }
+}
+
+@MainActor
+enum OneDriveControl {
+    static func launch() {
+        ClientControl.launch(bundleID: oneDriveBundleID)
     }
 
     static func quit() {

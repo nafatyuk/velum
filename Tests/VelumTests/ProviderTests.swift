@@ -53,7 +53,7 @@ import Testing
 
     @Test func noAccountsKeepsTheOldWording() {
         #expect(snapshot([], providers: [oneDriveRunning]).lidVerdict == .unknown("No OneDrive accounts found"))
-        #expect(snapshot([], providers: []).lidVerdict == .notRunning("OneDrive"))
+        #expect(snapshot([], providers: []).lidVerdict == .unknown("No cloud accounts found"))
     }
 }
 

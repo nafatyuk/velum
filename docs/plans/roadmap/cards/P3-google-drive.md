@@ -1,6 +1,6 @@
 # P3 · Google Drive, deep
 
-**Bucket** P Providers · **Part two** · **Status: gated on a named maintainer** · **Waits for** C3, a named maintainer · **Runs alongside** P2 · **Feeds** nothing
+**Bucket** P Providers · **Part two** (pulled forward November 12 at the owner's request; he uses Google Drive, so he is its maintainer) · **Status: done** for streaming mode, November 12, 2026 · **Waits for** C2 (C3 not needed) · **Runs alongside** P2 · **Feeds** nothing
 
 ## Brief
 
@@ -40,8 +40,88 @@ You own `Providers/GoogleDrive/`. Without a maintainer, this card doesn't start.
 
 | Decision | Suggested |
 |---|---|
-| Who maintains Google Drive | Nobody yet: leave it gated |
+| Who maintains Google Drive | Decided November 12: the owner, who uses it; built for streaming mode |
+| Show Google storage in the row (needs the Drive API and a sign-in) | Not yet; option (b) in the hand-off, with the owner awake |
 
 ## Hand-off
 
-_Not started._
+Built and live-checked overnight, November 12, 2026. The owner asked for it at bedtime ("make this app work for Google Drive too"), along with "dynamic and plug-in-and-out-able for all aspects" and "shit that works over my ideals". Codex and the Fable consultant were asked about visuals and the thorny calls.
+
+### What was verified on this Mac (Drive for desktop 133, streaming, one account)
+
+- **Folder.** `~/Library/CloudStorage/GoogleDrive-<email>/` holds `My Drive`, `.Trash`, `.Encrypted` and `.shortcut-targets-by-id`; Shared drives and Other computers appear there when they exist. The root reads as a live File Provider domain. Leftover folders from removed accounts, like OneDrive's dated ones, answer with no value.
+- **Per-file flags work exactly like OneDrive's.** 1,076 files read as uploaded and streamed. A probe went waiting → uploading in 0.4 s → uploaded at 13.6 s; its edit uploaded 10.6 s later. There are no transient false errors (unlike iCloud's 4355).
+- **FSEvents and progress.** FSEvents fire inside the folder. File Provider progress arrives per file with no kind.
+- **The app and its data.**
+  - One app, `com.google.drivefs`, serves every account; Google's limit is 4 accounts (`multi_account_max_accounts=4` in its process arguments).
+  - Quitting it leaves the folder live, so the account stays and shows "Not running · Start". It has its own auto-restart.
+  - Its local data is in `~/Library/Application Support/Google/DriveFS/<numeric-id>/`. A `my-drive` symlink there maps the data folder to the account's email.
+- **Drive's own queue.** The `metadata_sqlite_db` `operations` table held 2 → 1 → 0 rows while a probe uploaded and was deleted, then emptied: it is Drive's queue of pending work.
+- **What Drive doesn't expose.**
+  - `activity_items` stayed empty.
+  - `item_properties` has no pending or dirty keys for streamed files. Its index names `dirty-handle` and `do-not-upload`, but they never appeared.
+  - `mirror_sqlite.db` has `pending_uploads` and `queued_uploads`, for mirror mode only.
+  - No pause flag was found in its files. A `pause_syncing_option` process argument exists, and pausing shows up anyway as waiting files or queue rows.
+  - Storage quota isn't stored locally.
+
+### What was built (`Providers/GoogleDrive/GoogleDriveProvider.swift`)
+
+- **Discovery** runs every 60 s, and at once whenever `~/Library/CloudStorage` changes:
+  - every `GoogleDrive-<email>` folder that macOS calls a live File Provider domain, so any number of accounts appear and disappear on their own;
+  - a folder macOS can't be asked about is kept only if Velum already knew it, so a hiccup can't make an account vanish and leftovers can't become ghosts.
+- **Account details:**
+  - Key `googledrive:<email>`; name = the full email.
+  - Open in Finder goes to My Drive. View Online, Trash and Manage Storage use `drive.google.com/...?authuser=<email>`.
+  - `keepsOwnHistory` false, so Recent shows uploads Velum saw finish.
+- **Evidence** (Fable's rule, Codex's safeguards):
+  - The live per-file flags come first, as for every service.
+  - When nothing is pending, Drive's `operations` queue decides. Empty means "Up to date", with the source "Nothing pending · Google Drive's queue empty". Rows mean "Syncing changes", the lid line says "Wait before closing the lid · <account> is still syncing changes", and a queue busy for over 10 minutes raises "changes are stuck".
+  - If a future Drive makes the queue unreadable, the flags still stand, and the source honestly says only "Nothing pending · Google Drive running".
+  - With the app quit: "Not running", Start at the heading, and the usual "Google Drive stopped" alert.
+- **Places in Recent:**
+  - "In My Drive/Classes" and "In Shared drives/Lab";
+  - files under `.shortcut-targets-by-id` say "In a folder shared with you";
+  - `.Trash` is never tracked. A deleted file moving there was counted as an upload until this fix, and the stored list now drops such entries when it loads.
+
+### Decisions tonight, and the options weighed
+
+1. **The Google Drive API: not used** (Fable decided, Codex agreed).
+   - Checking files against Drive's servers needs a Restricted scope (`drive.readonly` or `drive.metadata.readonly`), which means Google verification. In Testing mode the login expires every 7 days.
+   - Storage quota might work under the non-sensitive `drive.file` scope (unconfirmed). That would be one notes line which "Manage Storage" already reaches in a click.
+   - The API costs networking, a Keychain token, a consent per account, and Velum's "no network connections" promise. The owner's authorization was "if you end up needing" it, and the local signals made it unneeded.
+   - So no Google Cloud project was created and nothing was changed in Cloud Console. If he wants storage in the row, the plan is option (b): `drive.file` only, opt-in, set up with him awake.
+2. **Row name: the full email**, both consultants agreed. It is the only local, unique identity, and what Google shows. Long ones truncate in the middle; the full address shows on hover and to VoiceOver. Shared drives stay inside their account.
+3. **Ten accounts: compact rows, not collapsing.**
+   - Fable proposed shrinking healthy rows to one line once there are more than six accounts; Codex proposed collapsible headings with a summary.
+   - Compact rows won: nothing gets hidden and there's no state to remember.
+   - Both proposed a count on each heading, which was built ("4 accounts", "2 of 3 up to date").
+4. **The "any CloudStorage folder" tier (C3): not tonight**, both agreed. No other client is installed here, and a false "synced" for an untested client is risk 4.
+
+### Plug-and-play, the owner's rule ("whatever is left still works")
+
+- **A service with no live account shows nothing.** OneDrive installed but signed out of everything, or uninstalled with its settings left behind, no longer counts as "stopped". The fallbacks that assumed OneDrive (lid line, icon, banner, menu) were made neutral.
+- **The panel's shape is fixed:** always "Cloud Sync", always a heading per service, in a fixed order. Services coming and going never rearrange it, and a sole stopped service still has Start at its heading (Fable's catch).
+- **Height:** the panel caps at the screen's height, with the header and lid line pinned and the rest scrolling.
+- **With many accounts:** the summary says "N of M accounts need attention", and the tooltip and VoiceOver list only the troubled accounts plus "N accounts up to date".
+- **An account that disappears** with uploads still pending says so once ("<account> was disconnected · 3 files hadn't reached the cloud when it went away"), then goes quiet. A removed service never gets a false "running again" note.
+- **The icon** takes the worst state of every account and stopped app, so a stopped OneDrive no longer hides a failing upload elsewhere (Codex's catch).
+- **Nothing specific to this Mac in the code:** no email, account ID or path. Service-specific knowledge (bundle IDs, folder names, Drive's database) is there on purpose, so Velum works on any Mac with these apps.
+
+### Tests and checks
+
+- 47 tests (`Scripts/test.sh`), including Google Drive's config and queue, the data-folder mapping, plain folders not becoming accounts, the busy lid line, the stuck-queue alert, the disconnect notice, the icon's worst state, and many-account summaries.
+- **Test script:** with only the Command Line Tools, swift-build sometimes loses Swift Testing's macro plugin. `Scripts/test.sh` names the active toolchain's plugin folder, which made three runs in a row stable.
+- **Live checks** with the installed app and test files (approved by the owner, all deleted):
+  - iCloud and Google Drive uploads appeared in Velum's recorded uploads;
+  - quitting Google Drive kept its account;
+  - a deleted file is no longer recorded as an upload.
+
+### Left for later
+
+- **Mirror mode** isn't covered. Its files sit outside File Provider; `mirror_sqlite.db` has `pending_uploads` and `queued_uploads` to start from. Today a mirrored My Drive simply isn't watched.
+- **More than one Google account** is tested only with fixtures; this Mac has one.
+- **Storage in the row**, through the Drive API with the owner awake (option b above).
+- **Codex's longer list:**
+  - give account identities a generation, so a reused OneDrive slot can't inherit another account's history;
+  - move vendor filename filters (`.fetch`) into the adapters;
+  - reconcile FSEvents gaps instead of letting them expire after 15 minutes.

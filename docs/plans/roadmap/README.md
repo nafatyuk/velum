@@ -23,16 +23,17 @@ Each card is one session's work. Paste a card's "Brief" into a new session; it s
 
 ## Progress (November 12, 2026)
 
-**5 of 25 cards done or built.** Three came from the memo's "start this week":
+**6 of 25 cards done.** Three came from the memo's "start this week":
 - C1, permission-free tracking (`0a85400`);
 - A1, the "Safe to close the lid?" line (`d09e180`);
 - A2, problem alerts (`d09e180`).
 
-Two were added on November 12, at your request for iCloud:
+Three were added on November 12, at your requests:
 - C2, the provider protocol;
-- P1, iCloud Drive, pulled forward from part two.
+- P1, iCloud Drive, pulled forward from part two;
+- P3, Google Drive in streaming mode, built overnight with your "plug-in-and-out-able" rule applied to everything.
 
-P1 still needs its live check in the installed app. The panel now groups accounts under a heading per service, a layout chosen after Codex and the Fable consultant weighed in (see [P1's hand-off](cards/P1-icloud-drive.md#hand-off)).
+All three were live-checked in the installed app. The panel now groups accounts under a heading per service, a layout chosen after Codex and the Fable consultant weighed in (see [P1's hand-off](cards/P1-icloud-drive.md#hand-off)).
 
 The fourth "this week" item, Developer ID enrolment, is R1 and waits on your decision. The app icon is on hold at your word; it holds up only G1 and G3.
 
@@ -100,7 +101,7 @@ The campaign follows the memo's three horizons.
 
 | Card | Result | Waits for | Runs alongside | Status |
 |---|---|---|---|---|
-| [P1 · iCloud Drive](cards/P1-icloud-drive.md) | iCloud Drive as adapter two: per-file flags plus `brctl status`, parsed defensively. The lid line, alerts and stuck files work for it | C2 | C3, T1, A5, A6, S2 | **built** November 12 (pulled forward at your request); live check after install |
+| [P1 · iCloud Drive](cards/P1-icloud-drive.md) | iCloud Drive as adapter two: per-file flags plus `brctl status`, parsed defensively. The lid line, alerts and stuck files work for it | C2 | C3, T1, A5, A6, S2 | **done** November 12 (pulled forward at your request) |
 | [C3 · Any CloudStorage folder (beta)](cards/C3-any-cloudstorage-folder.md) | Every live root under `~/Library/CloudStorage` (Dropbox, Google Drive streaming, Box, Proton, Nextcloud…) at basic fidelity, labelled beta, leftover folders ignored | C2 | P1, T1, A5, A6, S2 | planned |
 | [T1 · `velumctl`](cards/T1-velumctl.md) | A command-line tool inside the app: `velumctl status`, `lid` and `pending`, as text or `--json`, with exit codes for scripts | C2 | P1, C3, A5, A6, S2 | planned |
 | [A5 · A warning before sleep or shutdown](cards/A5-sleep-and-shutdown-guard.md) | Sleep, log out or shut down with uploads pending, and Velum says so; it never blocks | C2, A1, A2 | P1, C3, T1, A6, S2 | planned |
@@ -112,7 +113,7 @@ The campaign follows the memo's three horizons.
 | [G1 · The public repo page](cards/G1-public-repo-page.md) | A README led by the OneDrive multi-account pain, plus a screenshot and a 20-second GIF. Issue templates ask for S2's redacted report, and a Sponsor button. Then the switch to public, at your word | app icon, R2, S2 | S1, G2, R3 | planned; **your decisions** |
 | [G3 · Launch](cards/G3-launch.md) | Drafts for r/macapps, Show HN and replies in the OneDrive-icon threads the scouts found. You post them | G1, R3, P1 | nothing | planned |
 | [P2 · Dropbox, deep](cards/P2-dropbox.md) | Dropbox's own state beyond the generic tier: paused, the account's status, its own errors | C3, a named tester | P3 | **gated** on a tester |
-| [P3 · Google Drive, deep](cards/P3-google-drive.md) | Google Drive's own state, including mirror mode, which has no per-file flags | C3, a named maintainer | P2 | **gated** on a maintainer |
+| [P3 · Google Drive, deep](cards/P3-google-drive.md) | Google Drive's own state: per-file flags, its own queue of pending work, any number of accounts. Mirror mode is left for later | C2 (you maintain it) | P2 | **done** for streaming, November 12 |
 
 ### Part three: Later (only on real user requests)
 
@@ -206,7 +207,7 @@ flowchart LR
 
   classDef done fill:#e6f4ea,stroke:#34a853
   classDef gate stroke-dasharray: 5 5
-  class C1,A1,A2,C2,P1 done
+  class C1,A1,A2,C2,P1,P3 done
   class ICON,ENROL,TESTER,XCODE gate
 ```
 

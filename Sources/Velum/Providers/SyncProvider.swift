@@ -4,12 +4,35 @@ import Foundation
 enum ProviderID: String, CaseIterable, Codable {
     case oneDrive = "onedrive"
     case iCloud = "icloud"
+    case googleDrive = "googledrive"
 
     var name: String {
         switch self {
         case .oneDrive: "OneDrive"
         case .iCloud: "iCloud"
+        case .googleDrive: "Google Drive"
         }
+    }
+
+    /// The service's own app, which Velum can start when it isn't running. nil: part of macOS.
+    var clientBundleID: String? {
+        switch self {
+        case .oneDrive: oneDriveBundleID
+        case .iCloud: nil
+        case .googleDrive: "com.google.drivefs"
+        }
+    }
+}
+
+/// Is `url` the root of a live File Provider domain (a signed-in account's folder)? true or false when macOS
+/// answers; a folder left behind by a removed account, or any plain folder, answers with no value, which
+/// counts as false. nil only when macOS couldn't be asked at all, so callers can keep an account they
+/// already know through a passing hiccup instead of letting it vanish.
+func isLiveCloudFolder(_ url: URL) -> Bool? {
+    do {
+        return try url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem == true
+    } catch {
+        return nil
     }
 }
 
@@ -50,6 +73,8 @@ struct AccountEvidence {
     var lastActivity: Date?
     /// Extra facts for the row ("Desktop & Documents included", "1.27 TB free").
     var notes: [String] = []
+    /// Since when the provider's own queue has had work in it (Google Drive), for the stuck alert.
+    var workingSince: Date?
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,
@@ -59,8 +84,10 @@ struct ProviderReport: Equatable {
     var written: Date
     var state: SyncState        // .ok, .paused, .offline, .error or .unknown
     var headline: String
+    /// false for live evidence that has no time of its own ("Google Drive running").
+    var timed = true
 
-    var source: String { "\(label), \(RelTime.clock(written))" }
+    var source: String { timed ? "\(label), \(RelTime.clock(written))" : label }
 }
 
 /// A place inside an account, used to say where a file is: "In the top of OneDrive-Personal",
@@ -69,6 +96,8 @@ struct NamedRoot: Equatable {
     let path: String
     let name: String
     let prefixed: Bool
+    /// Say only "In <name>", however deep (folders named by IDs, like Google's shortcut targets).
+    var flat = false
 }
 
 /// One synced account as Velum sees it, whichever service it belongs to.
@@ -100,6 +129,7 @@ struct AccountConfig: Equatable, Identifiable {
                 continue
             }
             let parent = (relative as NSString).deletingLastPathComponent
+            if place.flat { return "In \(place.name)" }
             if place.prefixed { return parent.isEmpty ? "In \(place.name)" : "In \(place.name)/\(parent)" }
             return parent.isEmpty ? "In the top of \(place.name)" : "In \(parent)"
         }

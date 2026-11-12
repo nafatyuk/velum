@@ -51,10 +51,13 @@ enum OneDriveFiles {
             }
             guard let library else { continue }
 
-            // Signed-out accounts leave their settings behind but their folder is renamed, so skip those.
+            // Signed-out accounts leave their settings behind but their folder is renamed, so skip those; and a
+            // folder whose File Provider domain is gone (OneDrive uninstalled) no longer reads as synced.
             let folderPath = (library.path as NSString).expandingTildeInPath
             var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: folderPath, isDirectory: &isDir), isDir.boolValue else { continue }
+            guard fm.fileExists(atPath: folderPath, isDirectory: &isDir), isDir.boolValue,
+                  isLiveCloudFolder(URL(fileURLWithPath: folderPath)) != false   // settings say it exists; only a clear "no" drops it
+            else { continue }
 
             let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
             let kind: AccountKind = key == "Personal" ? .personal : .business
