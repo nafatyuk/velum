@@ -22,6 +22,35 @@ struct UploadsSnapshot: Equatable {
     var completed: [Activity] = []
 }
 
+/// A file that hasn't reached the cloud: the panel's "Not in the cloud yet" list, the stuck alert's file name.
+struct PendingFile: Equatable, Identifiable {
+    enum Status: Equatable {
+        /// Not started yet, or the service hasn't said.
+        case waiting
+        case uploading
+        /// The service's reason, as macOS words it, without the file name.
+        case failed(String)
+    }
+
+    let account: String     // the account's key
+    let path: String
+    /// When its latest change happened.
+    let since: Date
+    let status: Status
+
+    var id: String { path }
+    var name: String { (path as NSString).lastPathComponent }
+    var isFailing: Bool { if case .failed = status { true } else { false } }
+}
+
+/// Files listed by `UploadTracker.pending` (failing first, then oldest first; capped), plus how many
+/// qualified in all and per account, listed or not.
+struct PendingList: Equatable {
+    var files: [PendingFile] = []
+    var total = 0
+    var perAccount: [String: Int] = [:]
+}
+
 /// Watches each account's folders for changed files (FSEvents) and asks File Provider where each one is
 /// (`ubiquitousItemIsUploaded`, `…IsUploading`, `…UploadingError`). OneDrive and iCloud keep those flags
 /// honest: a changed file reads "not uploaded" at once, "uploading" when the upload starts, and "uploaded"
@@ -43,12 +72,13 @@ final class UploadTracker: @unchecked Sendable {
         }
     }
 
-    private enum State: Codable, Equatable {
+    /// Internal (not private) so tests can seed a stand-in tracker's saved state.
+    enum State: Codable, Equatable {
         case unchecked, waiting, uploading
-        case failed(String)
+        case failed(String)     // "<file name>: <reason>"
     }
 
-    private struct Candidate: Codable {
+    struct Candidate: Codable {
         let account: String
         var since: Date
         var generation: Int     // bumped on every change, so a check never erases newer work
@@ -70,7 +100,7 @@ final class UploadTracker: @unchecked Sendable {
     // Main thread only:
     private var streams: [String: Stream] = [:]
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let pendingKey = "pendingUploads"
     private let completedKey = "recentUploads"
     private let completedLimit = 30
@@ -88,7 +118,8 @@ final class UploadTracker: @unchecked Sendable {
     /// Called on a background queue when files change. Set before `watch`.
     var onChange: (@Sendable () -> Void)?
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if let data = defaults.data(forKey: pendingKey),
            let saved = try? JSONDecoder().decode([String: Candidate].self, from: data) {
             candidates = saved
@@ -199,7 +230,8 @@ final class UploadTracker: @unchecked Sendable {
 
     // MARK: Events
 
-    private func record(account: String, events: [(path: String, flags: UInt32)], lastEventID: FSEventStreamEventId) {
+    /// Internal (not private) so tests can feed made-up events.
+    func record(account: String, events: [(path: String, flags: UInt32)], lastEventID: FSEventStreamEventId) {
         let now = Date()
         let lostEvents = UInt32(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
                                 | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagEventIdsWrapped
@@ -220,9 +252,11 @@ final class UploadTracker: @unchecked Sendable {
             guard event.flags & isFile != 0, Self.isSyncable(event.path) else { continue }
             if event.flags & content != 0 {
                 // Created/modified/renamed: (re)check it. Whether it still exists is settled by the check,
-                // which also covers create→delete and atomic-save sequences inside one batch.
+                // which also covers create→delete and atomic-save sequences inside one batch. A newer change
+                // restarts its clock: "stuck" means the latest version has waited, not that the file is busy.
                 var candidate = candidates[event.path]
                     ?? Candidate(account: account, since: now, generation: 0, state: .unchecked, checked: .distantPast)
+                candidate.since = now
                 candidate.generation += 1
                 candidate.state = .unchecked
                 candidate.checked = .distantPast
@@ -336,6 +370,50 @@ final class UploadTracker: @unchecked Sendable {
             persistIfDirty()
         }
         return UploadsSnapshot(watching: watched, accounts: summaries, completed: seen)
+    }
+
+    /// How long a change may wait before its file counts as stuck: 10 minutes, the same as the stuck alert.
+    /// The defaults key `stuckAfterSeconds` overrides it, for tests and live checks.
+    static var stuckAfter: TimeInterval {
+        let seconds = UserDefaults.standard.double(forKey: "stuckAfterSeconds")
+        return seconds > 0 ? seconds : 10 * 60
+    }
+
+    /// Files not in the cloud whose latest change is at least `olderThan` old, plus failing files at any
+    /// age: failing first (the only ones the user can act on), then oldest first; at most `limit`, with the
+    /// full counts. Reads only what the tracker already holds (no File Provider calls), so it's cheap
+    /// enough for every refresh. File names go to the panel and the alert only, never to a log.
+    func pending(olderThan threshold: TimeInterval, limit: Int = 50, now: Date = Date()) -> PendingList {
+        let cutoff = now.addingTimeInterval(-threshold)
+        lock.lock()
+        let held = candidates
+        lock.unlock()
+
+        let files = held.compactMap { path, candidate -> PendingFile? in
+            let status: PendingFile.Status
+            switch candidate.state {
+            case .failed(let text):
+                status = .failed(Self.reason(text, path: path))
+            case .uploading:
+                guard candidate.since <= cutoff else { return nil }
+                status = .uploading
+            case .waiting, .unchecked:
+                guard candidate.since <= cutoff else { return nil }
+                status = .waiting
+            }
+            return PendingFile(account: candidate.account, path: path, since: candidate.since, status: status)
+        }
+        .sorted { a, b in
+            a.isFailing != b.isFailing ? a.isFailing : (a.since, a.path) < (b.since, b.path)
+        }
+        return PendingList(files: Array(files.prefix(max(0, limit))), total: files.count,
+                           perAccount: files.reduce(into: [:]) { $0[$1.account, default: 0] += 1 })
+    }
+
+    /// "Report.docx: The file name is too long." → "The file name is too long."
+    private static func reason(_ text: String, path: String) -> String {
+        let prefix = (path as NSString).lastPathComponent + ": "
+        return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : text
     }
 
     private enum Outcome {

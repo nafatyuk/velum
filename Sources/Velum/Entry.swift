@@ -45,6 +45,7 @@ enum DebugDump {
         if CommandLine.arguments.contains("--many") {
             snapshot.accounts += (2...4).flatMap { i in snapshot.accounts.map { $0.copy(suffix: i) } }
         }
+        if CommandLine.arguments.contains("--sample-stuck") { snapshot.stuck = sampleStuck(snapshot.accounts) }
         let store = AppModel.store
         if let i = CommandLine.arguments.firstIndex(of: "--max-height"), i + 1 < CommandLine.arguments.count,
            let h = Double(CommandLine.arguments[i + 1]) {
@@ -89,7 +90,8 @@ enum DebugDump {
         RunLoop.main.run(until: Date().addingTimeInterval(2))   // let File Provider and FSEvents report
         let transfers = monitor.snapshot()
         let uploads = tracker.summary()
-        let snapshot = collector.collect(force: true, transfers: transfers, uploads: uploads)
+        var snapshot = collector.collect(force: true, transfers: transfers, uploads: uploads)
+        snapshot.stuck = tracker.pending(olderThan: UploadTracker.stuckAfter)
         return (snapshot, transfers, uploads)
     }
 
@@ -121,6 +123,7 @@ enum DebugDump {
             }
             print("    online: \(account.config.webURL.absoluteString)")
         }
+        printStuck(snapshot.stuck)
         print("Recent:")
         for item in snapshot.activity.prefix(10) {
             let verb = item.verb.padding(toLength: 10, withPad: " ", startingAt: 0)
@@ -130,6 +133,43 @@ enum DebugDump {
     }
 
     private static func print(_ line: String) { Swift.print(line) }
+
+    /// The "Not in the cloud yet" list, as the panel would show it.
+    @MainActor
+    private static func printStuck(_ stuck: PendingList) {
+        print("Not in the cloud yet: \(stuck.total) (failing, or waiting at least \(Int(UploadTracker.stuckAfter)) s)")
+        for file in stuck.files {
+            let state = switch file.status {
+            case .waiting: "waiting"
+            case .uploading: "uploading"
+            case .failed(let reason): "failing: \(reason)"
+            }
+            print("  [\(file.account)] \(file.name) · changed \(RelTime.string(file.since)) · \(state)")
+        }
+    }
+
+    /// Made-up files for `--render-panel --sample-stuck`, spread over the accounts shown, to look at the
+    /// "Not in the cloud yet" section without real stuck files.
+    private static func sampleStuck(_ accounts: [AccountStatus]) -> PendingList {
+        guard !accounts.isEmpty else { return PendingList() }
+        let now = Date()
+        let samples: [(String, TimeInterval, PendingFile.Status)] = [
+            ("Budget 2027.xlsx", 40 * 60, .failed("The file couldn’t be uploaded because it’s larger than the service allows.")),
+            ("Invoice-1042.pdf", 3 * 86_400, .waiting),
+            ("Lecture notes (week 9).pdf", 2 * 3_600 + 300, .waiting),
+            ("Holiday photos.zip", 25 * 60, .uploading),
+            ("Draft v3.pages", 14 * 60, .waiting),
+            ("scan-0042.jpg", 12 * 60, .waiting),
+            ("README.md", 11 * 60, .waiting),
+        ]
+        let files = samples.enumerated().map { i, sample in
+            let account = accounts[i % accounts.count].config
+            return PendingFile(account: account.key, path: account.folder.appending(path: "Documents/\(sample.0)").path,
+                               since: now.addingTimeInterval(-sample.1), status: sample.2)
+        }
+        return PendingList(files: files, total: files.count,
+                           perAccount: files.reduce(into: [:]) { $0[$1.account, default: 0] += 1 })
+    }
 }
 
 private extension AccountStatus {
