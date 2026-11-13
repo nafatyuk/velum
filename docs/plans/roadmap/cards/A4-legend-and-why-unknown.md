@@ -143,7 +143,18 @@ Six older expectations changed with the wording: "No status yet", "Status unknow
   - `AccountRow` was restructured: the top line, plus a `lines` block under the buttons.
   - `PanelView`'s body is now `main` or `LegendView`.
   - `Notifier` changed two lines (the `.error` condition and the resolution loop).
-  - A7's reasons belong in `ProviderReport.reason` or `AccountEvidence.unknownReason`, and A7 should not restore Google Drive's green fallback.
+  - A7 should not restore Google Drive's green fallback.
+  - **A7 adds its own field** (its message, November 13): `AccountEvidence.compatibilityNote`, copied to `AccountStatus.compatibilityNote`, set when a client changed something Velum reads. A7 also appends it to `notes` until this reason line exists. At merge, wire it into the reason line in `Collector.status`, just before the "Nothing is waiting to upload." step, and drop A7's `notes` append:
+
+    ```swift
+    if let note = account.compatibilityNote {
+        // The report was dropped on purpose: say why, instead of the generic "no report yet".
+        if state == .unknown { reason = note; reasonReplacesSource = true }
+        else { reason = [note, reason].compactMap { $0 }.joined(separator: " ") }
+    }
+    ```
+
+    A7 also adds a line inside `Snapshot.lidVerdict`, before the `blind` check. A4 changed only the doc comment above `lidVerdict`.
 - **README's progress table** still says A4 is planned. It was left alone so the parallel cards' rows merge cleanly.
 
 ### What changed since this card was written (November 12)
