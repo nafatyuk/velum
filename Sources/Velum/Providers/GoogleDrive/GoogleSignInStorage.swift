@@ -340,7 +340,7 @@ extension GoogleSignInStorage {
             return
         }
         AppModel.closePanel()
-        guard confirm(email) else { return }
+        guard confirm(email, cacheHasFigures: !shared.cacheLacksFigures(email)) else { return }
         Task {
             do {
                 try await shared.signIn(email) { NSWorkspace.shared.open($0) }
@@ -355,11 +355,17 @@ extension GoogleSignInStorage {
     // Alert wording decided by the Fable consultant (November 12).
 
     @MainActor
-    private static func confirm(_ email: String) -> Bool {
+    private static func confirm(_ email: String, cacheHasFigures: Bool) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Show storage for \(email)?"
-        alert.informativeText = "Velum opens Google’s sign-in in your browser and then checks your storage about "
-            + "every 30 minutes. This is the only time Velum uses the network. Google’s page will mention Drive "
+        alert.messageText = cacheHasFigures ? "Sign in to Google for \(email)’s storage?" : "Show storage for \(email)?"
+        // With Google Drive's own figures on this Mac, the sign-in stands by: Velum keeps showing those and
+        // only asks Google when they're missing, so say so instead of promising checks that won't happen.
+        let checks = cacheHasFigures
+            ? "Google Drive on this Mac already reports this account’s storage, so Velum keeps showing that and asks "
+                + "Google only if it ever stops."
+            : "Velum then checks your storage about every 30 minutes."
+        alert.informativeText = "Velum opens Google’s sign-in in your browser. " + checks
+            + " This is the only time Velum uses the network. Google’s page will mention Drive "
             + "files you use with Velum; there are none, and Velum can’t see your files, mail or photos."
         alert.addButton(withTitle: "Continue in Browser")
         alert.addButton(withTitle: "Cancel")
@@ -376,13 +382,14 @@ extension GoogleSignInStorage {
         alert.runModal()
     }
 
-    /// The row's ••• items (Fable's wording), under Manage Storage. "Show Storage…" only when Drive's cache
-    /// has no figures for the account, since that's the only time the sign-in shows anything; once on, the
-    /// way off is always there. Each item: its title, and whether it turns the sign-in on.
+    /// The row's ••• items (Fable's wording), under Manage Storage. The way in is always there (the owner
+    /// signed out and found no way back when it hid behind Drive's cache): "Show Storage…" when Drive's
+    /// cache has no figures, "Sign In to Google for Storage…" when storage already shows from the cache.
+    /// Once on, the way off is always there. Each item: its title, and whether it turns the sign-in on.
     static func menuItems(phase: Phase, cacheLacksFigures: Bool) -> [(title: String, on: Bool)] {
         switch phase {
         case .unavailable: return []
-        case .off: return cacheLacksFigures ? [("Show Storage…", true)] : []
+        case .off: return [(cacheLacksFigures ? "Show Storage…" : "Sign In to Google for Storage…", true)]
         case .signingIn: return [("Cancel Sign-In", true)]
         case .on: return [("Stop Showing Storage", false)]
         case .expired: return [("Sign In Again…", true), ("Stop Showing Storage", false)]

@@ -45,7 +45,7 @@ sync app that isn't running; everything else it only reads.
 ## Requirements
 
 - macOS 26 or later (built and tested on macOS 27).
-- OneDrive for Mac, signed in to one or more accounts (tested with OneDrive 26.204).
+- OneDrive for Mac, signed in to one or more accounts (tested with OneDrive 26.204 and 26.212).
 - Xcode or the Command Line Tools (`xcode-select --install`) to build it.
 
 ## Install
@@ -128,10 +128,11 @@ To see what Velum sees without opening it:
 
 Velum shows a Google account's storage from Google Drive for desktop's own local cache, with no sign-in.
 If that cache ever has no figures for an account (a future Google Drive that stops keeping them), you can
-let Velum ask Google instead: the Google account row's ••• menu → **Show Storage…**, which says what will
-happen and then opens Google's sign-in in your browser. The item appears only while Google Drive's cache
-has no figures for that account; once it's on, **Stop Showing Storage** is always there. It's off by
-default, per account, and Velum works fully without it.
+let Velum ask Google instead: the Google account row's ••• menu → **Show Storage…** (or, while Google
+Drive's own figures already show, **Sign In to Google for Storage…**), which says what will happen and then
+opens Google's sign-in in your browser. Signed in, Velum still prefers Google Drive's figures and asks
+Google only when they're missing. Once it's on, **Stop Showing Storage** is always there, and after that the
+way back in is too. It's off by default, per account, and Velum works fully without it.
 
 - **What it adds:** the account's storage (used, of how much, and how much is Drive), refreshed about
   every 30 minutes and when you open the panel. Velum uses these figures only when Google Drive's cache

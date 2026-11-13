@@ -165,8 +165,11 @@ Velum can do and show, but for core functions it isn't needed. But it is very mu
 - **The cache always wins.** The provider asks `signInStorage` and `signInNote` only when the cache is
   empty (now through one helper, `GoogleDriveProvider.storage(cached:email:)`, so it's tested), and only
   that question starts a fetch, so a cache with figures means no request at all. The same question tells
-  the menu whether "Show Storage…" would show anything: it appears only while the cache is empty, and once
-  the sign-in is on, "Stop Showing Storage" is always offered.
+  the menu whether "Show Storage…" would show anything. Changed November 12, evening: the way in is always
+  offered, because the owner signed out and found no way back while the cache hid the item. It reads "Show
+  Storage…" with no cached figures and "Sign In to Google for Storage…" when storage already shows, and the
+  confirmation says that Velum keeps using Drive's figures while it has them. Once the sign-in is on, "Stop
+  Showing Storage" is always offered.
 - **Stop Showing Storage** revokes the grant at Google (`oauth2.googleapis.com/revoke`), deletes the
   Keychain item and clears the switch. After `invalid_grant` the row says "Storage not shown · sign in again
   from the ••• menu", and the menu offers **Sign In Again…** beside it.

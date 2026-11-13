@@ -359,13 +359,13 @@ import Testing
         #expect(revoke.map(Self.form)?["token"] == "saved-refresh")
     }
 
-    @Test func menuOffersOnlyWhatWouldShowSomething() {
+    @Test func menuAlwaysOffersAWayInAndOut() {
         func titles(_ phase: GoogleSignInStorage.Phase, _ lacking: Bool) -> [String] {
             GoogleSignInStorage.menuItems(phase: phase, cacheLacksFigures: lacking).map(\.title)
         }
         #expect(titles(.unavailable, true) == [])                       // no OAuth client in this build
         #expect(titles(.off, true) == ["Show Storage…"])
-        #expect(titles(.off, false) == [])                              // the cache already shows storage
+        #expect(titles(.off, false) == ["Sign In to Google for Storage…"])   // storage already shows from the cache
         #expect(titles(.signingIn, true) == ["Cancel Sign-In"])
         #expect(titles(.on, true) == ["Stop Showing Storage"])
         #expect(titles(.on, false) == ["Stop Showing Storage"])         // once on, the way off is always there
