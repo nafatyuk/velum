@@ -143,7 +143,7 @@ struct LegendView: View {
         let partial = services.filter { $0 != .oneDrive }.map(\.name)
         if services.contains(.oneDrive) {
             lines.append(partial.isEmpty ? "Recent: OneDrive’s own history."
-                         : "Recent: OneDrive’s own history. For \(partial.joined(separator: " and ")), only uploads Velum saw finish while it was running.")
+                         : "Recent: OneDrive’s own history. For \(CompatibilityText.list(partial)), only uploads Velum saw finish while it was running.")
         } else if !partial.isEmpty {
             lines.append("Recent: only uploads Velum saw finish while it was running.")
         }

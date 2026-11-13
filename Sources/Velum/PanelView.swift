@@ -422,7 +422,7 @@ struct ActivityRow: View {
 
     private var helpText: String {
         let base = item.isGone ? "\(folder) (opens the nearest folder that still exists)" : "\(folder) (click to show in Finder)"
-        return seenByVelum ? base + ". iCloud entries are uploads Velum saw finish while it was running." : base
+        return seenByVelum ? base + ". Velum saw this upload finish while it was running." : base
     }
 
     private var subtitle: String {

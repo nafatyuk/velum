@@ -83,12 +83,18 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         }
         guard !configs.isEmpty, let bundleID = id.clientBundleID else { return ProviderEvidence() }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains { !$0.isTerminated }
+        // No process, and no app under that ID either (renamed, moved, or uninstalled under a live folder): Velum
+        // can't tell whether it runs, so it says so rather than guessing "not running" (G2's dry run).
+        let appMissing = !running && NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) == nil
 
-        var evidence = ProviderEvidence(present: true, clientRunning: running)
+        var evidence = ProviderEvidence(present: true, clientRunning: appMissing ? nil : running)
         let paused = FileManager.default.fileExists(atPath: driveFS.appending(path: "user-paused").path)
         for config in configs {
             var account = AccountEvidence(config: config, name: config.fallbackName)
-            account.running = running
+            account.running = running || appMissing
+            if appMissing {
+                account.unknownReason = "Velum can’t find Google Drive’s app on this Mac, so it can’t tell whether it’s running."
+            }
             // The Drive cache wins; the optional sign-in is asked only when the cache has nothing, so with the
             // cache present it makes no request at all.
             let cached = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }

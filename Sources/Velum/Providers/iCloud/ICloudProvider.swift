@@ -70,6 +70,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
             if quota <= 0 {
                 account.notes.append("iCloud storage is full")
                 account.notesNeedAttention = true    // orange, as the legend says (A4)
+                account.storageFull = true           // the same storage alert Google Drive gets (G2's dry run)
                 evidence.trouble = "Storage full"
             } else {
                 account.notes.append("\(ByteCountFormatter.string(fromByteCount: quota, countStyle: .file)) free")
