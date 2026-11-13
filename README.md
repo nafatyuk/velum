@@ -22,6 +22,9 @@ keeps working.
   or N files are still on the way up, or some can't upload, or Velum can't vouch for it.
 - **Alerts when something's wrong.** Uploads failing, a sync issue, uploads stuck for 10 minutes, or
   OneDrive stopping on its own. See [Alerts](#alerts).
+- **Stuck files, by name.** Files whose latest change still isn't in the cloud after 10 minutes, or that
+  can't upload, are listed under "Not in the cloud yet" with how long they've waited or why they fail.
+  Click one to show it in Finder. The stuck alert names the oldest one.
 - **iCloud Drive too.** Its own row under an iCloud heading, with the same live upload tracking, the
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.

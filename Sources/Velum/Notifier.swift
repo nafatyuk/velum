@@ -11,6 +11,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let kind: Kind
         let title: String
         let body: String
+        /// What the debug log gets instead of `body` when the body names a file (file names never go to logs).
+        var logged: String? = nil
     }
 
     private enum Kind {
@@ -38,7 +40,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private lazy var center = UNUserNotificationCenter.current()
     private var episodes: [String: Episode] = [:]     // account key, or the provider's id ("onedrive") for a whole service
     private let settle: TimeInterval = 30
-    private let stuckAfter: TimeInterval = 10 * 60
+    private var stuckAfter: TimeInterval { UploadTracker.stuckAfter }
     private let userStopGrace: TimeInterval = 120
 
     /// When the user last quit or restarted each service's app from Velum, so that isn't reported as a problem.
@@ -100,8 +102,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                                               body: "\(account.provider.name) reports a sync problem.")
             } else if account.uploadsPending > 0, let since = account.oldestWaiting,
                       now.timeIntervalSince(since) > stuckAfter {
+                let body = Self.stuckBody(account, stuck: snapshot.stuck, now: now)
                 current[account.id] = Problem(kind: .stuck, title: "\(account.name): uploads are stuck",
-                                              body: "\(Self.files(account.uploadsPending)) waiting since \(RelTime.clock(since)).")
+                                              body: body.shown, logged: body.logged)
             } else if let since = account.workingSince, now.timeIntervalSince(since) > stuckAfter {
                 current[account.id] = Problem(kind: .queued, title: "\(account.name): changes are stuck",
                                               body: "\(account.provider.name) has had changes queued since \(RelTime.clock(since)).")
@@ -120,7 +123,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         for (key, problem) in current {
             if var episode = episodes[key], episode.kind == problem.kind {
                 if !episode.notified, now.timeIntervalSince(episode.firstSeen) >= settle {
-                    if enabled { post(key, title: problem.title, body: problem.body, sound: true) }
+                    if enabled { post(key, title: problem.title, body: problem.body, sound: true, logged: problem.logged) }
                     episode.notified = true   // also when disabled: switching on later shouldn't replay old news
                 }
                 episodes[key] = episode
@@ -144,8 +147,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func post(_ key: String, title: String, body: String, sound: Bool) {
-        debugLog("alert", "\(title) · \(body)\(systemAllowed ? "" : " (shown as Velum's banner)")")
+    private func post(_ key: String, title: String, body: String, sound: Bool, logged: String? = nil) {
+        debugLog("alert", "\(title) · \(logged ?? body)\(systemAllowed ? "" : " (shown as Velum's banner)")")
         guard systemAllowed else {
             fallback?(title, body, sound)
             return
@@ -159,6 +162,35 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private static func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
+
+    /// The stuck alert's body, naming the account's oldest waiting file: "Report.docx and 2 more, waiting
+    /// since 2:14 PM." Counts only files past the stuck threshold, not younger ones still on their way. With
+    /// no listed file to name (the listing is capped), the count alone. `logged` never names a file.
+    static func stuckBody(_ account: AccountStatus, stuck: PendingList, now: Date) -> (shown: String, logged: String) {
+        let count = max(1, stuck.perAccount[account.id] ?? account.uploadsPending)
+        let first = stuck.files.first { $0.account == account.id && $0.status == .waiting }
+        let since = moment(first?.since ?? account.oldestWaiting ?? now, now: now)
+        let logged = "\(files(count)) waiting since \(since)"
+        guard let first else { return (logged + ".", logged) }
+        let name = shortName(first.name)
+        let shown = count > 1 ? "\(name) and \(count - 1) more, waiting since \(since)."
+                              : "\(name) has been waiting since \(since)."
+        return (shown, logged)
+    }
+
+    /// "2:14 PM" today, "Nov 9, 2:14 PM" before today: a bare time would be wrong on day three.
+    static func moment(_ date: Date, now: Date) -> String {
+        Calendar.current.isDate(date, inSameDayAs: now)
+            ? RelTime.clock(date)
+            : date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+    /// Long names lose their middle, keeping the start and the extension: 40 characters at most.
+    static func shortName(_ name: String, limit: Int = 40) -> String {
+        guard name.count > limit else { return name }
+        let head = limit / 2
+        return name.prefix(head) + "…" + name.suffix(limit - head - 1)
+    }
 
     // MARK: UNUserNotificationCenterDelegate
 

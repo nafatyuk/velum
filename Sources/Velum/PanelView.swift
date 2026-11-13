@@ -62,6 +62,7 @@ struct PanelView: View {
     @ViewBuilder private var scrollingBody: some View {
         let room = store.maxPanelHeight - topHeight.wrappedValue - (showsBanner ? 64 : 0)
         let content = VStack(alignment: .leading, spacing: 0) {
+            StuckFilesView(store: store, actions: actions)   // A3 "Not in the cloud yet": only while files qualify
             accountsSection
             InsetSeparator()
             recent

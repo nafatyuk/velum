@@ -87,6 +87,8 @@ struct Snapshot: Equatable {
     var providers: [ProviderStatus] = []
     var axTrusted = false
     var liveItemsFound = false
+    /// Files past the stuck threshold or failing, for "Not in the cloud yet" and the stuck alert (A3).
+    var stuck = PendingList()
 
     var oneDrive: ProviderStatus? { providers.first { $0.id == .oneDrive } }
     var oneDriveRunning: Bool { oneDrive?.clientRunning == true }
@@ -400,7 +402,8 @@ final class Store: ObservableObject {
         let liveTransfers = transfers.snapshot()
         let tracker = uploadTracker
         queue.async {
-            let next = collector.collect(force: force, transfers: liveTransfers, uploads: tracker.summary())
+            var next = collector.collect(force: force, transfers: liveTransfers, uploads: tracker.summary())
+            next.stuck = tracker.pending(olderThan: UploadTracker.stuckAfter)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.inFlight = false
