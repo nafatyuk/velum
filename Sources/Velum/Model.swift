@@ -53,6 +53,8 @@ struct AccountStatus: Identifiable, Equatable {
     var workPending = false
     /// Since when the provider's own queue has held work.
     var workingSince: Date?
+    /// Why some of this account's evidence was dropped (card A7); also in `notes`.
+    var compatibilityNote: String?
 
     var id: String { config.key }
     var provider: ProviderID { config.provider }
@@ -77,6 +79,8 @@ struct ProviderStatus: Equatable {
     var clientRunning: Bool?
     /// A service-wide problem ("Storage full").
     var trouble: String?
+    /// How the client's internals read against the tested versions (card A7).
+    var compatibility: CompatibilityReport?
 
     var isStopped: Bool { clientRunning == false }
 }
@@ -106,6 +110,7 @@ struct Snapshot: Equatable {
         let pending = accounts.reduce(0) { $0 + $1.uploadsPending }
         if pending > 0 { return .pending(pending) }
         if let busy = accounts.first(where: \.workPending) { return .busy(busy.name) }
+        if let reason = providers.lazy.compactMap({ $0.compatibility?.lidReason }).first { return .unknown(reason) }   // A7
         if let blind = accounts.first(where: { !$0.uploadsCovered }) {
             return .unknown("Velum may have missed recent changes in \(blind.name)")
         }
@@ -140,6 +145,7 @@ final class Collector: @unchecked Sendable {
             guard evidence.present else { continue }
             snapshot.providers.append(ProviderStatus(id: provider.id, clientRunning: evidence.clientRunning,
                                                      trouble: evidence.trouble))
+            snapshot.providers[snapshot.providers.count - 1].compatibility = evidence.compatibility   // A7
             if provider.id == .oneDrive {
                 snapshot.axTrusted = evidence.axTrusted
                 snapshot.liveItemsFound = evidence.liveItemsFound
@@ -246,6 +252,7 @@ final class Collector: @unchecked Sendable {
         status.notesHelp = account.notesHelp
         status.notesNeedAttention = account.notesNeedAttention
         status.storageFull = account.storageFull
+        status.compatibilityNote = account.compatibilityNote   // A7
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first

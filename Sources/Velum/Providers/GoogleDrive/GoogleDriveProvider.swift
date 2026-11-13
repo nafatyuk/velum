@@ -49,6 +49,8 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     private var busySince: [String: Date] = [:]
     private var loggedQueue: [String: String] = [:]        // for the debug log: the queue's last state per account
     private var storageCache: [String: (stamp: Date?, value: GoogleStorage?)] = [:]
+    /// Checks every internal read here against the tested versions (card A7).
+    private let compat: GoogleDriveCompatibility
 
     /// Storage from the optional Google sign-in, for accounts whose Drive cache has none. Set once at launch
     /// by the sign-in feature; called on the collector's queue every refresh: return cached figures, never block.
@@ -69,12 +71,14 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         cloudStorage = home.appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
         driveFS = home.appending(path: "Library/Application Support/Google/DriveFS", directoryHint: .isDirectory)
+        compat = GoogleDriveCompatibility(cloudStorage: cloudStorage, driveFS: driveFS)
     }
 
     func gather(force: Bool, now: Date) -> ProviderEvidence {
         if force || now.timeIntervalSince(lastDiscovery) > 60 {
             configs = discover(known: Set(configs.map(\.key)))
             dataFolders = Self.dataFolders(in: driveFS, for: configs)
+            (configs, dataFolders) = compat.discovered(configs, dataFolders: dataFolders, now: now)
             lastDiscovery = now
         }
         guard !configs.isEmpty, let bundleID = id.clientBundleID else { return ProviderEvidence() }
@@ -102,11 +106,11 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
                 // Google Drive's own pause, for every account. Waiting files still show as "Paused, N waiting".
                 account.report = Self.pausedReport(now: now)
             } else if running {
-                // Drive's queue, when readable, decides; if a future Drive changes it, the per-file flags still
-                // stand and the source line says only that Drive is running.
-                let queued = dataFolders[config.key].flatMap { queueLength(config.key, folder: $0) }
+                // Drive's queue decides. A failed read leans on the last good one for 10 s; after that the row
+                // has no status (deletes and renames would go unseen) and the lid can't vouch (card A7).
+                let queued = compat.queue(config.key, read: dataFolders[config.key].flatMap { queueLength(config.key, folder: $0) }, now: now)
                 // Logged when the queue changes state (empty, busy, unreadable), not on every count.
-                let queueState = queued.map { $0 == 0 ? "is empty" : "has work queued" } ?? "can't be read; trusting the per-file flags alone"
+                let queueState = queued.map { $0 == 0 ? "is empty" : "has work queued" } ?? "can't be read, so no status"
                 if loggedQueue[config.key] != queueState {
                     debugLog("google", "\(config.fallbackName): Google Drive's queue \(queueState)\(queued.map { $0 > 0 ? " (\($0))" : "" } ?? "")")
                     loggedQueue[config.key] = queueState
@@ -117,13 +121,14 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
                     busySince[config.key] = nil
                 }
                 account.workingSince = busySince[config.key]
-                account.report = queued.map { Self.report(queued: $0, now: now) } ?? Self.runningReport(now: now)
+                account.report = queued.map { Self.report(queued: $0, now: now) }
             }
             evidence.accounts.append(account)
         }
         // Storage is optional information: it may mark the heading, never a row's state, the lid or the icon.
         let full = evidence.accounts.filter(\.storageFull).count
         if full > 0 { evidence.trouble = full == 1 ? "Storage full" : "\(full) accounts full" }
+        compat.apply(&evidence, now: now)
         return evidence
     }
 
@@ -167,12 +172,6 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         return value < 10 ? String(format: "%.1f %@", value, units[unit]) : "\(Int(value.rounded())) \(units[unit])"
     }
 
-    /// No readable queue (a Drive version that changed its database): only "Drive is running" stands behind
-    /// the live per-file evidence.
-    static func runningReport(now: Date) -> ProviderReport {
-        ProviderReport(label: "Google Drive running", written: now, state: .ok, headline: "Up to date", timed: false)
-    }
-
     /// Each account's DriveFS folder, found through the `my-drive` symlink it keeps to the account's My Drive.
     static func dataFolders(in driveFS: URL, for configs: [AccountConfig]) -> [String: URL] {
         let fm = FileManager.default
@@ -181,7 +180,7 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         for name in names where !name.isEmpty && name.allSatisfy(\.isNumber) {
             let folder = driveFS.appending(path: name, directoryHint: .isDirectory)
             guard let target = try? fm.destinationOfSymbolicLink(atPath: folder.appending(path: "my-drive").path) else { continue }
-            let myDrive = URL(fileURLWithPath: target).standardizedFileURL.path
+            let myDrive = URL(fileURLWithPath: target, relativeTo: folder).standardizedFileURL.path
             if let config = configs.first(where: { myDrive.hasPrefix($0.watchRoots[0].standardizedFileURL.path + "/") }) {
                 result[config.key] = folder
             }
@@ -189,11 +188,12 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         return result
     }
 
-    /// Rows in Drive's `operations` table, re-read only when the database changes. nil when unreadable.
+    /// Rows in Drive's `operations` table, re-read only when the database changes. nil when unreadable; a failed
+    /// read is retried on the next pass, never kept until Drive next writes.
     private func queueLength(_ key: String, folder: URL) -> Int? {
         let db = folder.appending(path: "metadata_sqlite_db").path
         let stamp = [db, db + "-wal"].compactMap { (try? FileManager.default.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }.max()
-        if let cached = queueCache[key], cached.stamp == stamp { return cached.count }
+        if let cached = queueCache[key], cached.stamp == stamp, cached.count != nil { return cached.count }
         let count = Self.countOperations(db)
         queueCache[key] = (stamp, count)
         return count

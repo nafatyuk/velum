@@ -68,6 +68,8 @@ struct ProviderEvidence {
     var liveItemsFound = false
     /// A service-wide problem to show beside the service's name ("Storage full").
     var trouble: String?
+    /// How the client's internals read against the tested versions (card A7).
+    var compatibility: CompatibilityReport?
 }
 
 /// What a provider knows about one account, before the live File Provider evidence is merged in.
@@ -89,6 +91,9 @@ struct AccountEvidence {
     var notesNeedAttention = false
     /// Out of storage (optional information: an alert and the heading, never the row's state).
     var storageFull = false
+    /// Why some of this account's evidence was dropped (card A7: "Can’t read OneDrive 27.0’s status report ·
+    /// uploads are still tracked"). Also first in `notes`, so it shows today; card A4's reason line can use it.
+    var compatibilityNote: String?
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,
@@ -98,7 +103,7 @@ struct ProviderReport: Equatable {
     var written: Date
     var state: SyncState        // .ok, .paused, .offline, .error or .unknown
     var headline: String
-    /// false for live evidence that has no time of its own ("Google Drive running").
+    /// false for live evidence that has no time of its own ("Google Drive's queue empty").
     var timed = true
 
     var source: String { timed ? "\(label), \(RelTime.clock(written))" : label }

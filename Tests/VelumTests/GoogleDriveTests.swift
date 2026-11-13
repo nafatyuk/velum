@@ -126,12 +126,12 @@ import Testing
         #expect(s.lidVerdict == .busy("a@b.c"))
     }
 
-    @Test func unreadableQueueStillCountsFlags() {
-        let e = Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root),
-                                 report: GoogleDriveProvider.runningReport(now: Fixture.now))
-        let s = Fixture.status(e)
-        #expect(s.state == .ok)
-        #expect(s.source == "Nothing pending · Google Drive running")
+    /// Card A7 (Fable): an unreadable queue is no longer "Up to date · Google Drive running": deletes and
+    /// renames would go unseen. No report, so no status; the lid's side is in CompatibilityTests.
+    @Test func unreadableQueueIsNoStatus() {
+        let s = Fixture.status(Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root)))
+        #expect(s.state == .unknown)
+        #expect(s.headline == "No status yet")
         #expect(!s.workPending)
     }
 

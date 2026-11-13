@@ -44,8 +44,9 @@ sync app that isn't running; everything else it only reads.
 
 ## Requirements
 
-- macOS 26 or later (built and tested on macOS 27).
+- macOS 26 or later (built and tested on macOS 27; iCloud's `brctl` answers tested on macOS 27.3).
 - OneDrive for Mac, signed in to one or more accounts (tested with OneDrive 26.204 and 26.212).
+- Google Drive for desktop, if you use it, in its default streaming mode (tested with Google Drive 133).
 - Xcode or the Command Line Tools (`xcode-select --install`) to build it.
 
 ## Install
@@ -97,6 +98,14 @@ Each account's status line names its source:
 - **From OneDrive.** OneDrive's own icon text, when you've turned that option on and its icons exist.
 
 When Velum has no evidence it says so ("No status yet", "Status unknown") and shows a plain cloud.
+
+**When a sync app updates.** None of these files is a promise from Microsoft, Google or Apple, so Velum
+checks each one every time it reads it, against what was tested (the versions under
+[Requirements](#requirements)). A new version that still reads as tested changes nothing. If something no
+longer reads as tested, Velum stops using that piece instead of guessing. The account then says why, for
+example "Can't read OneDrive 27.0's status report · uploads are still tracked". Live upload tracking comes
+from macOS and keeps working. The lid line stops saying "safe" if it relied on the missing piece, and you
+get one alert for that version. `Velum --dump` lists every check under "Compatibility".
 
 Everything is read-only. Velum doesn't read file contents, other apps' windows, your screen or your
 keystrokes.
@@ -195,6 +204,8 @@ Velum alerts you when:
 - OneDrive reports a sync issue,
 - uploads have waited more than 10 minutes,
 - OneDrive stops without you quitting it from Velum.
+- a new OneDrive, Google Drive or macOS changes something Velum reads (once per version, without a
+  "resolved" note; see [When a sync app updates](#how-velum-knows)).
 
 A problem has to last 30 seconds before Velum mentions it, it's mentioned once, and you get one
 "resolved" note when it clears. Click an alert to open Velum's panel. Turn alerts off with ••• → Notify
