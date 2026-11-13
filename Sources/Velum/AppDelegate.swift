@@ -74,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SleepGuard.shared.start(store: store, notifier: notifier)   // A5: a note after sleep or at shutdown when files weren't in the cloud
         if store.notificationsEnabled { notifier.requestPermission() }
 
+        if FirstRun.noteLaunch() { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.showPanel() } }   // S1: before the next line; the first run opens the panel once
         LoginItem.enableOnFirstLaunch()
         store.loginItemEnabled = LoginItem.isEnabled
         GoogleSignInStorage.install()   // the optional Google sign-in for storage; off until turned on per account
@@ -132,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.refresh()
         store.loginItemEnabled = LoginItem.isEnabled
         if !isPanelShown { store.showingLegend = false }   // the panel opens on the accounts, not the legend
+        if !isPanelShown { store.showingFirstRun = FirstRun.isPending() }   // S1: until Done, it opens on the first run
 
         fitPanel(force: true)
         // Only the first open fades in, so the glass's one-time materialize plays under the fade.
@@ -164,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func closePanel() {
         guard let p = panel, isPanelShown else { return }
         isPanelShown = false
+        if AppModel.store.showingFirstRun { FirstRun.panelClosed() }   // S1: closing it counts as done
         #if compiler(>=6.4)
         if #available(macOS 27.0, *) { statusItem.expandedInterfaceSession?.cancel() }
         #endif

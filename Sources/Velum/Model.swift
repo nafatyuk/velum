@@ -447,6 +447,7 @@ final class Store: ObservableObject {
 
     /// The legend ("What the Status Means…") is showing in place of the accounts. The panel opens without it.
     @Published var showingLegend = false
+    @Published var showingFirstRun = false   // S1: the first run, in place of the accounts (FirstRunView)
 
     /// Read by VoiceOver on the menu bar icon: one sentence per account, or with many accounts only the
     /// ones needing attention plus how many are up to date.
