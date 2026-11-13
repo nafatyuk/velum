@@ -29,6 +29,8 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
     private var checking = false
     /// Whether the last check's `brctl status` gave a usable answer; nil before the first finishes.
     private var lastAnswered: Bool?
+    /// Checks `brctl`'s answers against the tested macOS (card A7).
+    let compat = ICloudCompatibility()
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         self.home = home
@@ -73,6 +75,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
             }
         }
         evidence.accounts = [account]
+        compat.apply(&evidence)
         return evidence
     }
 
@@ -116,13 +119,19 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         lock.unlock()
         guard due else { return }
         queue.async { [self] in
-            let quota = Self.run(["quota"], timeout: 15).flatMap(Self.parseQuota)
-            let status = Self.run(["status", "com.apple.CloudDocs"], timeout: 40).flatMap { Self.parseStatus($0, at: Date()) }
+            let quotaOutput = Self.run(["quota"], timeout: 15)
+            let statusOutput = Self.run(["status", "com.apple.CloudDocs"], timeout: 40)
+            let quota = quotaOutput.flatMap(Self.parseQuota)
+            let status = statusOutput.flatMap { Self.parseStatus($0, at: Date()) }
+            let changed = compat.record(status: statusOutput, quota: quotaOutput)
             if quota == nil { debugLog("icloud", "brctl quota gave no usable answer") }
             if status == nil { debugLog("icloud", "brctl status gave no usable answer (timed out, failed or changed format)") }
             lock.lock()
             if let quota { self.quota = quota }
             if let status { self.report = status }
+            // A changed shape drops what earlier checks left, instead of showing it on (card A7).
+            if changed.statusChanged { self.report = nil }
+            if changed.quotaChanged { self.quota = nil }
             lastCheck = Date()
             lastAnswered = status != nil
             checking = false

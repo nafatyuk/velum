@@ -14,10 +14,12 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
     /// When Velum first saw each account with no usable report, for "One is due by …" (A4).
     private var noReportSince: [String: Date] = [:]
     private let defaults = UserDefaults.standard
+    /// Checks every internal read here against the tested versions (card A7).
+    private let compat = OneDriveCompatibility()
 
     func gather(force: Bool, now: Date) -> ProviderEvidence {
         if force || now.timeIntervalSince(lastDiscovery) > 60 {
-            configs = OneDriveFiles.discoverAccounts()
+            configs = compat.discovered(OneDriveFiles.discoverAccounts(), now: now)
             lastDiscovery = now
         }
 
@@ -73,6 +75,7 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
             account.lastActivity = history.first?.date
             evidence.accounts.append(account)
         }
+        compat.apply(&evidence, mappingUnknown: mappingUnknown, now: now)
         return evidence
     }
 
@@ -144,7 +147,8 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
     private func diagnostics(_ key: String, force: Bool) -> Diagnostics? {
         let path = OneDriveFiles.diagnosticsPath(key)
         let stamp = OneDriveFiles.modificationDate(path)
-        if !force, let cached = diagCache[key], cached.stamp == stamp { return cached.value }
+        // A failed read (the file is there, nothing came back) is retried next pass, not kept for the hour (A7).
+        if !force, let cached = diagCache[key], cached.stamp == stamp, cached.value != nil || stamp == nil { return cached.value }
         let value = OneDriveFiles.diagnostics(at: path)
         diagCache[key] = (stamp, value)
         return value

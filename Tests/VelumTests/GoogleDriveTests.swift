@@ -127,15 +127,14 @@ import Testing
         #expect(s.lidVerdict == .busy("a@b.c"))
     }
 
-    /// A running app is no evidence that Drive is caught up (A4; P3 had it green): the row can't tell, says
-    /// why, and the per-file flags still count.
-    @Test func unreadableQueueCantTellButCountsFlags() {
-        let e = Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root),
-                                 report: GoogleDriveProvider.runningReport(now: Fixture.now))
+    /// Card A7 (Fable): an unreadable queue is no longer "Up to date · Google Drive running": deletes and
+    /// renames would go unseen. No report, so no status (the lid's side is in CompatibilityTests); waiting,
+    /// uploading and failing files still count from macOS's per-file flags (A4).
+    @Test func unreadableQueueIsNoStatusButCountsFlags() {
+        let e = Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root))
         let s = Fixture.status(e)
         #expect(s.state == .unknown)
-        #expect(s.headline == "Can’t tell")
-        #expect(s.reason == "Velum can’t read Google Drive’s queue on this version. Per-file status from macOS still works. Nothing is waiting to upload.")
+        #expect(s.headline == "No status yet")
         #expect(!s.workPending)
         var uploads = UploadSummary()
         uploads.waiting = 2

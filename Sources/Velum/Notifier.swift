@@ -45,6 +45,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// When the user last quit or restarted each service's app from Velum, so that isn't reported as a problem.
     var userStopped: [ProviderID: Date] = [:]
+    /// One alert per client release that changed what Velum reads (card A7, Compatibility.swift).
+    var compatibility = CompatibilityAlerts()
     var onOpen: (() -> Void)?
 
     /// Whether macOS lets Velum post notifications. It only does for apps signed with an Apple-issued
@@ -112,6 +114,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 current[account.id] = Problem(kind: .stopped, title: "\(account.name) isn’t syncing",
                                               body: "\(account.provider.name) isn’t running for this account.")
             }
+        }
+
+        for alert in compatibility.due(snapshot.providers, now: now) where enabled {   // A7: once per release, no "resolved"
+            post(alert.key, title: alert.title, body: alert.body, sound: true)
         }
 
         // Storage is separate from sync problems (its own key), so both can be true at once.

@@ -68,6 +68,8 @@ struct ProviderEvidence {
     var liveItemsFound = false
     /// A service-wide problem to show beside the service's name ("Storage full").
     var trouble: String?
+    /// How the client's internals read against the tested versions (card A7).
+    var compatibility: CompatibilityReport?
 }
 
 /// What a provider knows about one account, before the live File Provider evidence is merged in.
@@ -92,6 +94,9 @@ struct AccountEvidence {
     /// Why the provider has no status for this account, and what would end it ("Checking iCloud now. This
     /// takes about 15 seconds."). Shown under a row that ends up unknown with no report.
     var unknownReason: String?
+    /// Why some of this account's evidence was dropped (card A7: "Can’t read OneDrive 27.0’s status report ·
+    /// uploads are still tracked"). Also first in `notes`, so it shows today; card A4's reason line can use it.
+    var compatibilityNote: String?
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,
@@ -101,7 +106,7 @@ struct ProviderReport: Equatable {
     var written: Date
     var state: SyncState        // .ok, .paused, .offline, .error or .unknown
     var headline: String
-    /// false for live evidence that has no time of its own ("Google Drive running").
+    /// false for live evidence that has no time of its own ("Google Drive's queue empty").
     var timed = true
     /// How often a fresh one comes (OneDrive's hourly report, Velum's 10-minute iCloud check). A timed report
     /// older than this plus `grace` is old: never green, never safe, and the row says so.

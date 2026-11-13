@@ -124,6 +124,9 @@ enum DebugDump {
             print("    online: \(account.config.webURL.absoluteString)")
         }
         printStuck(snapshot.stuck)
+        // Card A7: every internal Velum reads, checked against the tested versions.
+        print("Compatibility:")
+        for line in snapshot.providers.compactMap(\.compatibility).flatMap(\.dumpLines) { print(line) }
         print("Recent:")
         for item in snapshot.activity.prefix(10) {
             let verb = item.verb.padding(toLength: 10, withPad: " ", startingAt: 0)

@@ -65,6 +65,8 @@ struct AccountStatus: Identifiable, Equatable {
     /// The headline as the summary, tooltip and VoiceOver's icon label say it: an old problem reads
     /// "Paused (old report)" there rather than the row's "Last reported: Paused · old".
     var briefHeadline: String { lastReported.map(Reasons.briefOld) ?? headline }
+    /// Why some of this account's evidence was dropped (card A7); also in `notes`.
+    var compatibilityNote: String?
 
     var id: String { config.key }
     var provider: ProviderID { config.provider }
@@ -89,6 +91,8 @@ struct ProviderStatus: Equatable {
     var clientRunning: Bool?
     /// A service-wide problem ("Storage full").
     var trouble: String?
+    /// How the client's internals read against the tested versions (card A7).
+    var compatibility: CompatibilityReport?
 
     var isStopped: Bool { clientRunning == false }
 }
@@ -120,6 +124,7 @@ struct Snapshot: Equatable {
         let pending = accounts.reduce(0) { $0 + $1.uploadsPending }
         if pending > 0 { return .pending(pending) }
         if let busy = accounts.first(where: \.workPending) { return .busy(busy.name) }
+        if let reason = providers.lazy.compactMap({ $0.compatibility?.lidReason }).first { return .unknown(reason) }   // A7
         if let blind = accounts.first(where: { !$0.uploadsCovered }) {
             return .unknown("Velum may have missed recent changes in \(blind.name)")
         }
@@ -154,6 +159,7 @@ final class Collector: @unchecked Sendable {
             guard evidence.present else { continue }
             snapshot.providers.append(ProviderStatus(id: provider.id, clientRunning: evidence.clientRunning,
                                                      trouble: evidence.trouble))
+            snapshot.providers[snapshot.providers.count - 1].compatibility = evidence.compatibility   // A7
             if provider.id == .oneDrive {
                 snapshot.axTrusted = evidence.axTrusted
                 snapshot.liveItemsFound = evidence.liveItemsFound
@@ -296,6 +302,13 @@ final class Collector: @unchecked Sendable {
             reason = account.unknownReason
             reasonReplacesSource = reason != nil
         }
+        if let note = account.compatibilityNote {
+            // Card A7 (wired at merge, per A4's hand-off): when evidence was dropped on purpose, say why instead
+            // of the generic "no report yet"; on a row that still has a status, the note leads the reason.
+            let sentence = note.hasSuffix(".") ? note : note + "."
+            if state == .unknown { reason = sentence; reasonReplacesSource = true }
+            else { reason = [sentence, reason].compactMap { $0 }.joined(separator: " ") }
+        }
         if account.running, watchingUploads, uploads?.coverageGap != true, reasonReplacesSource,
            waiting + uploading + failed.count == 0, !unlabelled {
             // What Velum does know: every local change it saw is in the cloud. It reconciles a grey row with
@@ -321,6 +334,7 @@ final class Collector: @unchecked Sendable {
         status.notesHelp = account.notesHelp
         status.notesNeedAttention = account.notesNeedAttention
         status.storageFull = account.storageFull
+        status.compatibilityNote = account.compatibilityNote   // A7
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first
