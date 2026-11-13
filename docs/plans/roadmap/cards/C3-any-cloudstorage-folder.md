@@ -50,3 +50,9 @@ You own `Providers/Generic/`, root discovery and their tests. Never open, write 
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **This Mac now has three live services:** OneDrive, iCloud Drive and Google Drive. The generic tier must skip folders an adapter claims (`OneDrive-*`, `GoogleDrive-*`).
+- **Leftover folders are solved.** `isLiveCloudFolder` (in `SyncProvider.swift`) counts a folder only when macOS answers a clear yes. Leftover folders, and any plain folder, answer "no value", not "no", and the two dated OneDrive leftovers here are correctly ignored. Reuse it.
+- **Still untested here** against Dropbox, Box and the rest. Labelling the tier beta still applies.

@@ -21,9 +21,9 @@ The few items it deliberately doesn't build are under [Left out on purpose](#lef
 
 Each card is one session's work. Paste a card's "Brief" into a new session; it stands on its own.
 
-## Progress (November 12, 2026)
+## Progress (November 12, 2026, afternoon)
 
-**6 of 25 cards done.** Three came from the memo's "start this week":
+**6 of 25 cards done, and G1 partly.** Three came from the memo's "start this week":
 - C1, permission-free tracking (`0a85400`);
 - A1, the "Safe to close the lid?" line (`d09e180`);
 - A2, problem alerts (`d09e180`).
@@ -35,7 +35,16 @@ Three were added on November 12, at your requests:
 
 All three were live-checked in the installed app. The panel now groups accounts under a heading per service, a layout chosen after Codex and the Fable consultant weighed in (see [P1's hand-off](cards/P1-icloud-drive.md#hand-off)).
 
-The fourth "this week" item, Developer ID enrolment, is R1 and waits on your decision. The app icon is on hold at your word; it holds up only G1 and G3.
+Later on November 12, at your requests:
+- **Google Drive gained storage, pause, and Start/Restart/Quit.** Storage ("214 GB free of 400 GB") comes from Google Drive's own cache, with no sign-in. "Paused" comes from its `user-paused` file. Start, Restart and Quit now work for every service with an app.
+- **An optional Google sign-in** fills in storage when the cache has none. It was built in a parallel session and merged at `c8b5262`.
+- **iCloud rows got "Recover Deleted Files…".**
+- **The repo went public, part of G1.** You approved it after a scrub, because Google's sign-in setup needed a public home page and privacy policy. That page is a `gh-pages` site.
+- **MIT** covers `main` and `gh-pages`.
+
+These changes touched the planned cards; each has a "What changed since this card was written" note: G1, G2, R1, R2, R3, S1, S2, A4, A7, C3 and T1. See [P3's hand-off](cards/P3-google-drive.md#hand-off) for the details.
+
+The fourth "this week" item, Developer ID enrolment, is R1 and still waits on your decision. The app icon is still on hold at your word; it now holds up only G1's images and G3, since the repo is already public.
 
 ## How it works, in one picture
 
@@ -75,7 +84,7 @@ The campaign follows the memo's three horizons.
 |---|---|---|
 | **C** Core | One provider-neutral engine: the permission-free tracking; a `SyncProvider` protocol with OneDrive as adapter one; a generic tier for any File Provider folder | C1 ✓ → C2 · part two: C3 |
 | **A** Assurance | What turns Velum from an icon tidier into sync assurance: the lid line, alerts, stuck files by name, a legend that explains every state and its age, a check that OneDrive's internals still read as expected; then a warning before sleep and a history of each account's syncing | A1 ✓, A2 ✓, A3, A4, A7 · part two: A5, A6 |
-| **P** Providers | Deep adapters: iCloud Drive first; Dropbox and Google Drive only with a named tester; OneDrive's icon text in other languages | part two: P1 · gated: P2, P3 · later: P4 |
+| **P** Providers | Deep adapters: iCloud Drive and Google Drive (both done November 12); Dropbox only with a named tester; OneDrive's icon text in other languages | P1 ✓, P3 ✓ · gated: P2 · later: P4 |
 | **T** Tools and system surfaces | `velumctl` text and JSON for scripts, Raycast and backup jobs; then Shortcuts, a Control Center control and a widget | part two: T1 · later: T2, T3 |
 | **S** Support | A guided first run; a diagnostics export that redacts itself | part two: S1, S2 |
 | **R** Release | Developer ID signing, a notarized DMG, Sparkle updates, a Homebrew tap | R1 → R2 · part two: R3 |
@@ -108,12 +117,12 @@ The campaign follows the memo's three horizons.
 | [A6 · Sync history per account](cards/A6-sync-history.md) | A small sparkline per account over the last days (uploads, waits, failures), so silent multi-day stalls become visible | C2 | P1, C3, T1, A5, S2 | planned |
 | [S2 · Diagnostics export, redacted](cards/S2-diagnostics-export.md) | One menu item, and `Velum --dump --redact`, that writes a report with names, emails, folders and file names replaced, ready to attach to an issue | C2 | P1, C3, T1, A5, A6 | planned |
 | [S1 · A guided first run](cards/S1-guided-first-run.md) | On first launch, Velum shows which clouds it found and which vendor icons still show. It deep-links to System Settings → Menu Bar and explains where its own icon landed | C3, P1 | G2, R3 | planned |
-| [G2 · An adapter guide](cards/G2-adapter-guide.md) | `docs/adapters.md`: the protocol, OneDrive and iCloud as worked examples, the trust rules, and a test checklist a contributor can follow | C3, P1 | S1, R3 | planned |
-| [R3 · A Homebrew tap](cards/R3-homebrew-tap.md) | `brew install --cask nafatyuk/tap/velum` from your own tap; the main Homebrew cask later | R2 | S1, G2 | planned |
-| [G1 · The public repo page](cards/G1-public-repo-page.md) | A README led by the OneDrive multi-account pain, plus a screenshot and a 20-second GIF. Issue templates ask for S2's redacted report, and a Sponsor button. Then the switch to public, at your word | app icon, R2, S2 | S1, G2, R3 | planned; **your decisions** |
+| [G2 · An adapter guide](cards/G2-adapter-guide.md) | `docs/adapters.md`: the protocol, OneDrive, iCloud Drive and Google Drive as worked examples, the trust rules, and a test checklist a contributor can follow | P1, P3 (done; C3 optional) | S1, R3 | planned; **ready to start** |
+| [R3 · A Homebrew tap](cards/R3-homebrew-tap.md) | `brew install --cask nafatyuk/tap/velum` from your own tap; the main Homebrew cask later | R2 (the repo is already public) | S1, G2 | planned |
+| [G1 · The public repo page](cards/G1-public-repo-page.md) | A README led by the OneDrive multi-account pain, plus a screenshot and a 20-second GIF. Issue templates ask for S2's redacted report, and a Sponsor button. The switch to public is done | R2, S2 (app icon for the images) | S1, G2, R3 | **partly done**: public since November 12; the page is still to do |
 | [G3 · Launch](cards/G3-launch.md) | Drafts for r/macapps, Show HN and replies in the OneDrive-icon threads the scouts found. You post them | G1, R3, P1 | nothing | planned |
-| [P2 · Dropbox, deep](cards/P2-dropbox.md) | Dropbox's own state beyond the generic tier: paused, the account's status, its own errors | C3, a named tester | P3 | **gated** on a tester |
-| [P3 · Google Drive, deep](cards/P3-google-drive.md) | Google Drive's own state: per-file flags, its own queue of pending work, any number of accounts. Mirror mode is left for later | C2 (you maintain it) | P2 | **done** for streaming, November 12 |
+| [P2 · Dropbox, deep](cards/P2-dropbox.md) | Dropbox's own state beyond the generic tier: paused, the account's status, its own errors | C3, a named tester | nothing | **gated** on a tester |
+| [P3 · Google Drive, deep](cards/P3-google-drive.md) | Google Drive's own state: per-file flags, its own queue of pending work, pause, storage from its cache, an optional Google sign-in for storage, any number of accounts. Mirror mode is left for later | C2 (you maintain it) | nothing | **done** for streaming, November 12 |
 
 ### Part three: Later (only on real user requests)
 
@@ -131,7 +140,7 @@ Arrows mean the card at the arrow's tail must be committed to `main` first. Dash
 flowchart LR
   ICON["App icon<br/>on hold · your call"]
   ENROL["Apple Developer Program<br/>$99 a year · your call"]
-  TESTER["A named tester or<br/>maintainer per adapter"]
+  TESTER["A named tester<br/>for Dropbox"]
   XCODE["Xcode installed<br/>your call"]
 
   C1["C1 · Permission-free tracking ✓"]
@@ -182,10 +191,11 @@ flowchart LR
   A2 --> A5
   C3 --> S1
   P1 --> S1
-  C3 --> G2
+  C3 -.-> G2
   P1 --> G2
+  P3 --> G2
   R2 --> R3
-  ICON --> G1
+  ICON -.->|images| G1
   R2 --> G1
   S2 -->|issue templates ask for it| G1
   G1 --> G3
@@ -193,9 +203,8 @@ flowchart LR
   P1 -->|launch with iCloud| G3
   G2 -.-> G3
   C3 --> P2
-  C3 --> P3
+  C2 --> P3
   TESTER --> P2
-  TESTER --> P3
 
   T1 --> T2
   T1 --> T3
@@ -216,10 +225,10 @@ flowchart LR
 | 1 | C2, R1 | C2 touches nearly every Swift file, so no other code card runs beside it. R1 touches only the build and signing scripts and `Info.plist`, and starts once you have enrolled. |
 | 2 | A3, A4, A7, R2 | Each owns a new file of its own plus marked lines in shared files. R2 needs R1's signed build. |
 | 3 | P1, C3, T1, A5, A6, S2 | All need C2's protocol. P1 and C3 own different adapters; T1 and S2 add their own entry points; A5 and A6 own new files. |
-| 4 | S1, G2, R3 | S1 and G2 need two real adapters and the generic tier to describe. R3 needs a Sparkle-era release to point at. |
-| 5 | G1 | Waits for the icon, a release, and S2's redacted report, which the issue templates ask for. |
+| 4 | S1, G2, R3 | S1 and G2 need real adapters to describe: three exist now, so G2 can start any time. R3 needs a Sparkle-era release to point at. |
+| 5 | G1 (the page) | The repo is already public. The page waits for a release and S2's redacted report, which the issue templates ask for, and the icon for its images. |
 | 6 | G3 | Launch once: signed, on Homebrew, with iCloud Drive. |
-| Gated | P2, P3 | Only with a named tester or maintainer (risk 3, adapters for clients you don't use). |
+| Gated | P2 | Only with a named tester (risk 3, adapters for clients you don't use). P3 needed no gate: you use Google Drive. |
 | Later | T2, T3, P4 | Only on real user requests (risk 5). T2 and T3 also need Xcode, which this Mac doesn't have: the Command Line Tools have no App Intents metadata processor and no extension templates. |
 
 The longest chain is your enrolment → R1 → R2 → R3 → G3. The icon starts a second chain, icon → G1 → G3, which can finish no sooner than R2 does.
@@ -232,17 +241,19 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 |---|---|---|
 | R1 | Join the Apple Developer Program ($99 a year) | Yes, before going public. Without it, three problems: macOS 15 and later make everyone click "Open Anyway"; Homebrew casks must pass Gatekeeper [V/S]; macOS refuses Velum's notifications (verified this week). The consultant's funding answer: free forever, with sponsors covering the fee |
 | R1 | Universal build, or Apple silicon only | Universal, if the Command Line Tools can build the Intel half (R1 finds out); otherwise Apple silicon only, said in the README |
-| R2 | Sparkle's update check is the first network connection Velum makes: check automatically, or ask on first run | Sparkle's own first-run question. The README's "makes no network connections" becomes "only to check for updates, if you allow it" |
+| R2 | Sparkle's update check would be Velum's second network use (after the optional Google sign-in): check automatically, or ask on first run | Sparkle's own first-run question; the README's network sentence names both, each only if you allow it |
+| R2 | Where the update feed lives | On the existing `gh-pages` site (`nafatyuk.github.io/velum/appcast.xml`), so Google's links keep working |
 | A2 | Once system notifications work: keep the "resolved" follow-up, or errors only (the consultant's default) | Keep as built: each problem, then one "resolved" note |
 | A3 | How long before a file counts as stuck | 10 minutes, the same as the stuck alert |
 | A5 | Warn only, or also hold off sleep briefly while uploads finish | Warn only; never hold up sleep or shutdown |
 | A6 | How much history to keep | 30 days, on this Mac only |
 | C3 | Show the generic tier's folders by default, or behind a switch | Shown, each labelled beta |
 | G1 | The app icon | On hold, your call |
-| G1 | When the repo goes public, and whether `docs/plans/` goes public with it | After R2's first release and the icon; keep the plans, they show where Velum is going |
+| G1 | When the repo goes public, and whether `docs/plans/` goes public with it | **Decided November 12:** public now, plans included, after a scrub |
 | G1 | Sponsor links: GitHub Sponsors, Ko-fi, both, or none | GitHub Sponsors only |
 | G3 | Where and when to post; you post | Once, after G1: r/macapps and Show HN, then replies in the OneDrive-icon threads |
-| P2, P3 | Who tests Dropbox and Google Drive (you use neither) | Nobody yet: leave them gated |
+| P2 | Who tests Dropbox (you don't use it) | Nobody yet: leave it gated |
+| P3 | Who maintains Google Drive | **Decided November 12:** you; done for streaming mode |
 | T2, T3 | Install Xcode | Only when someone asks for these |
 
 ## Rules every card follows
@@ -292,7 +303,7 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 | A4 | `LegendView.swift`, the age text in `AccountRow`, the `.unknown` reasons in the OneDrive adapter |
 | A7 | `Providers/OneDrive/Compatibility.swift`, the README's tested-version line |
 | R1 | `build.sh`, `Scripts/` (signing, `release.sh`, `build-dmg.sh`), `Resources/Velum.entitlements`, `Info.plist`'s version keys |
-| R2 | The Sparkle dependency, `Updater.swift`, `docs/appcast.xml`, `RELEASING.md`, the ••• menu's Check for Updates… |
+| R2 | The Sparkle dependency, `Updater.swift`, `appcast.xml` on the `gh-pages` branch, `RELEASING.md`, the ••• menu's Check for Updates… |
 | P1 | `Providers/iCloud/` |
 | C3 | `Providers/Generic/` and the root discovery |
 | T1 | `Sources/velumctl/`, its product in `Package.swift`, its copy step in `build.sh` |
@@ -304,7 +315,8 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 | R3 | The tap, a separate repository (`nafatyuk/homebrew-tap`) |
 | G1 | `README.md`, images under `docs/`, `.github/ISSUE_TEMPLATE/`, `.github/FUNDING.yml` |
 | G3 | Drafts outside the repo, in `~/Local Documents/Velum/launch/` |
-| P2, P3 | `Providers/Dropbox/`, `Providers/GoogleDrive/` |
+| P2 | `Providers/Dropbox/` |
+| P3 (done) | `Providers/GoogleDrive/` |
 | P4 | The OneDrive adapter's text classification and its tests |
 | T2, T3 | The Xcode or XcodeGen project and the extension targets |
 

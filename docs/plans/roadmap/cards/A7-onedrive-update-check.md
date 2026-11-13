@@ -61,3 +61,13 @@ Never edit OneDrive's files. Never use `log show` (it returns nothing here).
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **Google Drive's internals need the same canary.** Velum now also relies on:
+  - the `operations` table and the `driveway_account` record in each account's `metadata_sqlite_db`;
+  - the `my-drive` symlink that maps a DriveFS folder to an email;
+  - the `user-paused` file;
+  - the `GoogleDrive-<email>` folder naming.
+- **Two of them already fail safe.** Storage shows only if limit − used = remaining. An unreadable queue falls back to "Google Drive running", never to a false "Up to date".
+- **The rest of this card's pattern still applies:** a per-version check, a reason line, and one alert per new version. iCloud's `brctl` output belongs here too.

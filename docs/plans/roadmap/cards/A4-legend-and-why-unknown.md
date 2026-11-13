@@ -57,3 +57,13 @@ Badge artwork stays as it is unless you decide otherwise (below).
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **Three services, three kinds of account-wide evidence,** so the legend and the "why unknown?" line must explain each:
+  - OneDrive's hourly report (up to an hour old);
+  - iCloud's `brctl status` (every 10 minutes);
+  - Google Drive's own queue (live), with "Google Drive running" when the queue can't be read.
+- **Recent is partial for two of them.** For iCloud and Google Drive it shows only uploads Velum saw finish while it was running (Fable's risk from P1).
+- **Notes that need explaining:** storage ("214 GB free of 400 GB"; orange when almost full or full; storage never changes a row's state) and "Desktop & Documents included".
+- **"Paused" now exists for Google Drive** (its `user-paused` file) as well as OneDrive.

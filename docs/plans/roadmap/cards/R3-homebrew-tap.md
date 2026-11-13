@@ -1,6 +1,6 @@
 # R3 · A Homebrew tap
 
-**Bucket** R Release · **Part two** · **Status: planned** · **Waits for** R2 (and, to be usable by others, G1's public repo) · **Runs alongside** S1, G2 · **Feeds** G3
+**Bucket** R Release · **Part two** · **Status: planned** · **Waits for** R2 (the repo is already public) · **Runs alongside** S1, G2 · **Feeds** G3
 
 ## Brief
 
@@ -11,7 +11,7 @@ Crisp's `RELEASING.md` (github.com/didriksg/Crisp) records what matters:
 - **`auto_updates true`** suits a Sparkle app: `brew upgrade` still upgrades a copy that hasn't updated itself.
 - **The `binary` line** for a command-line tool (T1's `velumctl`) goes in only after a release that contains it.
 
-A tap is a public GitHub repository, and the release it points at must be downloadable without signing in. So the tap can be prepared and tested now, but others can use it only once G1 makes Velum public. Publishing the tap is your go-ahead.
+A tap is a public GitHub repository, and the release it points at must be downloadable without signing in. Velum's repo has been public since November 12, so the tap works for others as soon as R1 and R2 have published a release. Publishing the tap is your go-ahead.
 
 Read the [campaign rules](../README.md#rules-every-card-follows), [R1's](R1-developer-id-and-notarized-dmg.md#hand-off) and [R2's](R2-sparkle-updates.md#hand-off) hand-offs, and Crisp's "Homebrew" section.
 

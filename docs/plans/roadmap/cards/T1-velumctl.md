@@ -52,3 +52,14 @@ The tool only reads. No commands that change anything (pause, restart) for now.
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **The snapshot should carry, per service:**
+  - whether its app runs;
+  - its trouble ("Storage full");
+  - Google Drive's pause.
+- **Per account:**
+  - storage figures and their source (Drive's cache or the optional sign-in);
+  - the notes line.
+- **Accounts come and go at run time.** Consumers must treat the list as dynamic: keys like `googledrive:<email>`, any number per service.

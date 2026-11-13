@@ -6,13 +6,14 @@
 
 Once others install Velum, they need updates. The consultant put "Developer ID + notarized DMG + Sparkle" in one "Now" row ([memo](../strategy-memo.md) §2, and §5, item 2): GitHub Releases plus Sparkle, copying Crisp's flow [V]. Crisp's pieces (github.com/didriksg/Crisp, MIT) are:
 - `scripts/fetch-sparkle.sh`, which fetches a pinned Sparkle;
-- `docs/appcast.xml`, served by GitHub Pages;
+- `docs/appcast.xml`, served by GitHub Pages (Velum's Pages site is the `gh-pages` branch instead; see below);
 - `release.sh --publish`;
 - a `RELEASING.md` checklist written from its own mistakes. Version 1.6.0 shipped an appcast item with a blank description, so everyone who updated saw an empty dialog.
 
 Two facts shape this card:
-- **Sparkle checks for updates over the network,** the first connection Velum would ever make. The README says Velum "makes no network connections", so this is your decision (below), and the README changes with it.
-- **The repo is private until G1.** A private repo's Pages site and release files can't be fetched by an installed app. So the in-app update works for real only after G1. Until then, test with a local feed, as Crisp's `RELEASING.md` describes.
+- **Sparkle checks for updates over the network.** The README says Velum makes no network connections unless you switch on the optional Google sign-in, so an update check is your decision (below), and the README changes with it.
+- **The repo is public (since November 12) and already has a Pages site:** the orphan `gh-pages` branch at <https://nafatyuk.github.io/velum/>, which Google's sign-in setup links to. Put the appcast there (`appcast.xml` on `gh-pages`, served at `nafatyuk.github.io/velum/appcast.xml`). Switching Pages to `main`'s `docs/`, as Crisp does, would break Google's links. Release files on a public repo can be fetched, so the update can be tested for real once R1's signed build exists. The local feed test still comes first.
+- **Velum's network promise has one exception already:** the optional Google sign-in, only when switched on. Sparkle's check becomes the second, as you decide.
 
 Read the [campaign rules](../README.md#rules-every-card-follows), [R1's hand-off](R1-developer-id-and-notarized-dmg.md#hand-off), and Crisp's `RELEASING.md` and `fetch-sparkle.sh`.
 
@@ -26,7 +27,7 @@ Read the [campaign rules](../README.md#rules-every-card-follows), [R1's hand-off
 - **Release steps** added to R1's `release.sh`:
   1. Sign the DMG for Sparkle (`sign_update`).
   2. Write the appcast item, with the release notes as its Markdown description. Fail if the description is empty.
-  3. Commit `docs/appcast.xml` with the version bump.
+  3. Commit the version bump on `main` and `appcast.xml` on `gh-pages`.
 - **`RELEASING.md`,** adapted from Crisp's "Before the tag":
   1. Read the appcast that was written.
   2. Open the DMG and check its version.
@@ -49,7 +50,7 @@ Read the [campaign rules](../README.md#rules-every-card-follows), [R1's hand-off
 You own:
 - the Sparkle dependency and its fetch script;
 - `Updater.swift`;
-- `docs/appcast.xml`;
+- `appcast.xml` on the `gh-pages` branch;
 - `RELEASING.md`;
 - the ••• menu's Check for Updates… (one line in `PanelView.swift`);
 - the release steps added to R1's `release.sh`.
@@ -59,7 +60,7 @@ You own:
 | Decision | Suggested |
 |---|---|
 | Check for updates automatically, or ask on first run | Sparkle's own first-run question; the README then says Velum connects to the internet only to check for updates, if you allow it |
-| Where the appcast lives | GitHub Pages from `docs/`, as Crisp does, once the repo is public |
+| Where the appcast lives | On the existing `gh-pages` site, `nafatyuk.github.io/velum/appcast.xml` (Pages can't also serve `main`'s `docs/` without breaking Google's links) |
 
 ## Hand-off
 

@@ -96,3 +96,7 @@ Other facts:
 - **A height cap** (Codex): pin the header and lid line and scroll the rest when the panel is taller than the screen. It isn't needed at 662 pt.
 - **A4's legend** should say that iCloud's Recent shows only uploads Velum saw (Fable's risk 3).
 - **The live check after install: done, November 12.** A test file in iCloud Drive was recorded by the installed app as uploaded, so it appears in Recent, and was then deleted. The panel itself was checked with `--render-panel`, since nobody was awake to open it.
+
+### Added November 12, morning
+
+- **"Recover Deleted Files…"** in the row's ••• menu opens `icloud.com/recovery`, Apple's documented page for getting deleted iCloud Drive files back. A deep link to iCloud.com's Recently Deleted sidebar doesn't exist: `icloud.com/iclouddrive/recently-deleted` opens "Item Unavailable". Each service now names this item itself (`ProviderID.deletedFilesLabel`).

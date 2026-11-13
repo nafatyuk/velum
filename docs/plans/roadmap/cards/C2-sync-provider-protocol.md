@@ -157,6 +157,12 @@ Swift Testing's `@Test` macro loads with the Command Line Tools only when `Packa
 
 See [P3's hand-off](P3-google-drive.md#hand-off).
 
+**Changed again on November 12, morning:**
+- Start, Restart and Quit are built for every service with an app: `ClientControl.launch`, `.quit` and `.restart(bundleID:)`, and `PanelActions.startClient`, `.restartClient` and `.quitClient(ProviderID)`.
+- `Notifier.userStopped[provider]` replaces `userStoppedOneDriveAt`.
+- `ProviderID.deletedFilesLabel` names each service's way back to deleted files.
+- `GoogleDriveProvider.signInStorage` and `signInNote` are the seams the optional Google sign-in plugs into.
+
 **For later cards:**
 - `Velum --render-panel <file.png> [--dark]` draws the real panel with live data into an image, without replacing the running app. Use it for A3, A4 and A6's screenshots.
 - `Store.show(_:)` feeds it a snapshot.

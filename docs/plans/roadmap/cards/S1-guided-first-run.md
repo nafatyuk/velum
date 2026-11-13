@@ -41,3 +41,8 @@ You own `FirstRunView.swift`, its first-launch flag, and one ••• menu line
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **The owner hit this card's problem on November 12:** after Google Drive was added, its own menu bar icon was still showing, and only System Settings can hide another app's icon. Velum's ••• menu now has **Menu Bar Settings…** (System Settings → Menu Bar), so a first run should point to it for every service whose app draws an icon: OneDrive (one per account) and Google Drive (one for all accounts). iCloud Drive draws none.
+- "The clouds Velum found" now means OneDrive, iCloud Drive and Google Drive, discovered at run time (see P3's plug-and-play section).

@@ -61,3 +61,13 @@ No uploads, and no "send to developer" button.
 ## Hand-off
 
 _Not started._
+
+### What changed since this card was written (November 12)
+
+- **More to redact:**
+  - Google Drive account names are email addresses, and they appear in folder names (`GoogleDrive-<email>`);
+  - DriveFS folders are named by a numeric Google account ID;
+  - storage figures are personal.
+
+  The redaction corpus needs all three.
+- **More to report:** per service, the evidence each row used (OneDrive's report, iCloud's `brctl`, Google Drive's queue and pause), and where storage came from (Drive's cache or the optional sign-in). Never include the sign-in's tokens.

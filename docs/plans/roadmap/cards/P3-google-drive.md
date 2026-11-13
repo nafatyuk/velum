@@ -1,6 +1,6 @@
 # P3 · Google Drive, deep
 
-**Bucket** P Providers · **Part two** (pulled forward November 12 at the owner's request; he uses Google Drive, so he is its maintainer) · **Status: done** for streaming mode, November 12, 2026 · **Waits for** C2 (C3 not needed) · **Runs alongside** P2 · **Feeds** nothing
+**Bucket** P Providers · **Part two** (pulled forward November 12 at the owner's request; he uses Google Drive, so he is its maintainer) · **Status: done** for streaming mode, with storage, pause and the optional Google sign-in, November 12, 2026 (merged at `c8b5262`, installed) · **Waits for** C2 (C3 not needed) · **Runs alongside** P2 · **Feeds** nothing
 
 ## Brief
 
@@ -41,7 +41,7 @@ You own `Providers/GoogleDrive/`. Without a maintainer, this card doesn't start.
 | Decision | Suggested |
 |---|---|
 | Who maintains Google Drive | Decided November 12: the owner, who uses it; built for streaming mode |
-| Show Google storage in the row (needs the Drive API and a sign-in) | Not yet; option (b) in the hand-off, with the owner awake |
+| Show Google storage in the row | Done November 12: read from Drive's own cache by default; the optional Google sign-in (the owner's choice: "local figures + optional API too") fills in only when the cache has none |
 
 ## Hand-off
 
@@ -229,7 +229,8 @@ state, Keychain, menu items, debug commands).
   `~/Library/Application Support/Velum/GoogleOAuthClient.plist`; Google won't show the secret again.
 
 **Left for later.**
-- **Merging.** This branch carries `main` up to `586f1c7`. After merging, copy
+- **Merging: done.** Merged into `main` as a fast-forward at `c8b5262` (owner's go-ahead), the client plist copied into `Resources/`, installed and pushed. The installed Velum held no network connections afterwards: the owner's switch is on, but his cache has figures.
+- **Whenever Velum is rebuilt** from a fresh clone, copy
   `~/Library/Application Support/Velum/GoogleOAuthClient.plist` into `Resources/` before
-  `./build.sh --install`; without it the installed build hides the items.
+  `./build.sh --install`; without it the build hides the sign-in items.
 - `--google-storage <email>` and `--google-sign-out <email>` remain for testing.

@@ -43,11 +43,12 @@ Read the [campaign rules](../README.md#rules-every-card-follows), `build.sh`, `S
   - Check the banner fallback still covers a "Don't Allow".
   - Ask the user whether to keep the "resolved" notes (A2's open decision).
 - **Accessibility moves with the signature.** A new signature means macOS treats Velum as a new app. Anyone using exact status turns Velum's switch off and on again in Privacy & Security → Accessibility. Say so in the README and the hand-off.
-- **Publishing a GitHub Release is the user's go-ahead.** The repo is private until G1, so its releases are private too.
+- **Publishing a GitHub Release is the user's go-ahead.** The repo is public (since November 12), so a release is public the moment it's published.
 
 ## Done when
 
 - `release.sh` produces a DMG that both `spctl` checks accept. Test it on a quarantined copy (`xattr -w com.apple.quarantine …` on a copy, never on the original).
+- The Google sign-in's Keychain item survives the new signature, or the user is told to sign in again. A new signature can change which app the Keychain trusts.
 - With the user's OK: the installed signed build shows macOS's notification prompt. After it is allowed, quitting OneDrive externally gives a real notification, and reopening it gives the "resolved" one.
 - The README's Install section has both routes: the DMG, and building from source.
 

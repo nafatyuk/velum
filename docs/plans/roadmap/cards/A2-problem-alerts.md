@@ -50,3 +50,14 @@ Quitting OneDrive from outside Velum gives one "OneDrive stopped" alert, and reo
 **For C2:** the `"onedrive"` key becomes the provider's id.
 
 **For A3:** the stuck alert's body should name the first file.
+
+### Later additions (November 12)
+
+The same notifier now covers every service, still with one alert per problem and a 30 s settle:
+- **A stopped app** (OneDrive or Google Drive). Quitting from Velum is excused per service (`userStopped[provider]`).
+- **Google Drive's queue stuck** for 10 minutes.
+- **Google storage full.** It has its own key, so it can be true alongside a sync problem.
+- **An account that disconnects** with files not yet uploaded. One notice, no "resolved".
+- **No false "running again"** for a service that was removed.
+
+See [P3's hand-off](P3-google-drive.md#hand-off).
