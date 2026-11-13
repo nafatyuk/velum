@@ -14,6 +14,7 @@ struct VelumApp: App {
             DebugDump.run()
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-first-run"), i + 1 < CommandLine.arguments.count { FirstRun.prepareRender(); DebugDump.renderPanel(to: CommandLine.arguments[i + 1], dark: CommandLine.arguments.contains("--dark")); exit(0) }   // S1
         if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
             DebugDump.renderPanel(to: CommandLine.arguments[i + 1], dark: CommandLine.arguments.contains("--dark"))
             exit(0)
@@ -132,6 +133,7 @@ enum DebugDump {
             print("    online: \(account.config.webURL?.absoluteString ?? "none")")
         }
         printStuck(snapshot.stuck)
+        for line in FirstRun.dumpLines(snapshot) { print(line) }   // S1: the first run, and each app's menu bar setting (read-only)
         // Card A7: every internal Velum reads, checked against the tested versions.
         print("Compatibility:")
         for line in snapshot.providers.compactMap(\.compatibility).flatMap(\.dumpLines) { print(line) }

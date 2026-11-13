@@ -91,8 +91,13 @@ sudo mkdir -p /usr/local/bin && sudo ln -sf ~/Applications/Velum.app/Contents/Ma
 
 ## First run
 
+The first time Velum runs, its panel opens on a short setup: the clouds it found, which of their apps are
+still allowed their own menu bar icons (read from macOS's Allow in the Menu Bar list, with no permission),
+where Velum's icon is, Open at Login and how alerts arrive. Done, or closing the panel, puts it away;
+••• → Setup… shows it again. The two steps it walks you through:
+
 1. **Hide OneDrive's own icons.** System Settings → Menu Bar → Allow in the Menu Bar → turn **OneDrive**
-   off. OneDrive keeps syncing; only its icons go away.
+   off (and **Google Drive**, if you use it). They keep syncing; only their icons go away.
 2. **Find Velum's icon.** macOS 27 puts new menu bar icons in its hidden section (behind the « control).
    ⌘-drag Velum's cloud to where you want it.
 Velum works fully from here, with no permissions. One optional extra: if you keep OneDrive's own icons

@@ -43,6 +43,8 @@ struct PanelView: View {
         Group {
             if store.showingLegend {
                 LegendView(store: store) { store.showingLegend = false }
+            } else if store.showingFirstRun {
+                FirstRunView(store: store, actions: actions)   // S1
             } else {
                 main
             }
@@ -131,6 +133,7 @@ struct PanelView: View {
             CircleIconButton(systemName: "arrow.clockwise", help: "Refresh") { store.refresh(force: true) }
             Menu {
                 Button("What the Status Means…") { store.showingLegend = true }
+                Button("Setup…") { store.showingFirstRun = true }   // S1
                 Toggle("Notify About Problems", isOn: Binding(
                     get: { store.notificationsEnabled },
                     set: { actions.setNotifications($0) }
