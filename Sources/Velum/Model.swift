@@ -261,6 +261,12 @@ final class Collector: @unchecked Sendable {
 final class Store: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
     @Published var loginItemEnabled = false
+    /// ••• → Debug Logging (see DebugLog).
+    @Published var debugLogging = DebugLog.shared.isEnabled {
+        didSet { DebugLog.shared.isEnabled = debugLogging }
+    }
+    /// The last snapshot written to the debug log, to log only what changed.
+    private var loggedSnapshot: Snapshot?
     /// The tallest the panel may be (the screen's height under the menu bar); set by the shell.
     @Published var maxPanelHeight: CGFloat = 10_000
     @Published var notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true {
@@ -402,6 +408,12 @@ final class Store: ObservableObject {
                         self.snapshot = next
                     }
                     self.onRefresh?(next)
+                    if DebugLog.shared.isEnabled {
+                        for line in DebugLog.changes(from: self.loggedSnapshot, to: next) { debugLog("status", line) }
+                        self.loggedSnapshot = next
+                    } else {
+                        self.loggedSnapshot = nil
+                    }
                     let roots = Dictionary(next.accounts.map { ($0.config.key, $0.config.watchRoots) },
                                            uniquingKeysWith: { first, _ in first })
                     self.transfers.watch(roots)

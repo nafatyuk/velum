@@ -47,6 +47,7 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     private var lastDiscovery = Date.distantPast
     private var queueCache: [String: (stamp: Date?, count: Int?)] = [:]
     private var busySince: [String: Date] = [:]
+    private var loggedQueue: [String: String] = [:]        // for the debug log: the queue's last state per account
     private var storageCache: [String: (stamp: Date?, value: GoogleStorage?)] = [:]
 
     /// Storage from the optional Google sign-in, for accounts whose Drive cache has none. Set once at launch
@@ -104,6 +105,12 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
                 // Drive's queue, when readable, decides; if a future Drive changes it, the per-file flags still
                 // stand and the source line says only that Drive is running.
                 let queued = dataFolders[config.key].flatMap { queueLength(config.key, folder: $0) }
+                // Logged when the queue changes state (empty, busy, unreadable), not on every count.
+                let queueState = queued.map { $0 == 0 ? "is empty" : "has work queued" } ?? "can't be read; trusting the per-file flags alone"
+                if loggedQueue[config.key] != queueState {
+                    debugLog("google", "\(config.fallbackName): Google Drive's queue \(queueState)\(queued.map { $0 > 0 ? " (\($0))" : "" } ?? "")")
+                    loggedQueue[config.key] = queueState
+                }
                 if let queued, queued > 0 {
                     busySince[config.key] = busySince[config.key] ?? now
                 } else {
@@ -197,7 +204,11 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         let db = folder.appending(path: "metadata_sqlite_db").path
         let stamp = [db, db + "-wal"].compactMap { (try? FileManager.default.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }.max()
         if let cached = storageCache[key], cached.stamp == stamp { return cached.value }
-        let value = Self.readProperty("driveway_account", db: db).flatMap { Self.parseStorage($0, asOf: Date()) }
+        let blob = Self.readProperty("driveway_account", db: db)
+        let value = blob.flatMap { Self.parseStorage($0, asOf: Date()) }
+        if blob != nil, value == nil {
+            debugLog("google", "Google Drive's account record didn't parse as storage (format changed?); showing no storage")
+        }
         storageCache[key] = (stamp, value)
         return value
     }

@@ -189,6 +189,7 @@ final class UploadTracker: @unchecked Sendable {
     }
 
     private func noteGap(_ account: String) {
+        debugLog("tracker", "\(account): saved resume point too old to replay; watching from now, so changes made meanwhile may be missed")
         lock.lock()
         gapUntil[account] = Date().addingTimeInterval(gapDuration)
         lock.unlock()
@@ -206,10 +207,12 @@ final class UploadTracker: @unchecked Sendable {
         let isFile = UInt32(kFSEventStreamEventFlagItemIsFile)
         let removed = UInt32(kFSEventStreamEventFlagItemRemoved)
 
+        var dropped: UInt32 = 0
         lock.lock()
         for event in events {
             if event.flags & lostEvents != 0 {
                 gapUntil[account] = now.addingTimeInterval(gapDuration)
+                dropped |= event.flags & lostEvents
                 continue
             }
             guard event.flags & isFile != 0, Self.isSyncable(event.path) else { continue }
@@ -227,7 +230,11 @@ final class UploadTracker: @unchecked Sendable {
                 dirty = true
             }
         }
+        if dropped != 0 {
+            debugLog("tracker", "\(account): macOS dropped change events (flags 0x\(String(dropped, radix: 16))); can't vouch for 15 minutes")
+        }
         if candidates.count > maxCandidates {
+            debugLog("tracker", "more than \(maxCandidates) changed files pending; forgetting the oldest and marking a gap")
             let oldest = candidates.sorted { $0.value.since < $1.value.since }.prefix(candidates.count - maxCandidates)
             for (path, candidate) in oldest {
                 candidates[path] = nil

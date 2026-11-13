@@ -205,6 +205,18 @@ system notifications; it refuses locally signed builds without asking. Built fro
 therefore shows its own alert as a small glass banner under its menu bar icon. A build signed with
 an Apple-issued certificate uses system notifications automatically.
 
+## Troubleshooting: the debug log
+
+When something looks wrong, turn on ••• → **Debug Logging**. Velum then writes what changes and what goes
+wrong to `~/Library/Logs/Velum/Velum.log`:
+- every account's status changes, services and accounts coming and going, and the lid line;
+- alerts, missed-change gaps, background checks that failed;
+- Google sign-in events and the actions you click in Velum.
+
+••• → **Open Debug Log** opens it in Console. It stays on your Mac, holds no file contents or sign-in
+tokens, and rotates at 2 MB. Status lines can name a file that's failing to upload, as the panel does. It's
+off by default.
+
 ## Limits
 
 - **It depends on OneDrive's undocumented internals.** OneDrive updates can change these files, so Velum

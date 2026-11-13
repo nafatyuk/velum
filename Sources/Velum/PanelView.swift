@@ -21,6 +21,8 @@ struct PanelActions {
     var enableExactStatus: @MainActor () -> Void
     var restartApp: @MainActor () -> Void
     var dismissExactStatusTip: @MainActor () -> Void
+    var setDebugLogging: @MainActor (Bool) -> Void
+    var openDebugLog: @MainActor () -> Void
     var setNotifications: @MainActor (Bool) -> Void
     var setLoginItem: @MainActor (Bool) -> Void
     var quitApp: @MainActor () -> Void
@@ -123,6 +125,14 @@ struct PanelView: View {
                     set: { actions.setLoginItem($0) }
                 ))
                 Button("Menu Bar Settings…") { actions.openMenuBarSettings() }
+                Divider()
+                Toggle("Debug Logging", isOn: Binding(
+                    get: { store.debugLogging },
+                    set: { actions.setDebugLogging($0) }
+                ))
+                if store.debugLogging || FileManager.default.fileExists(atPath: DebugLog.shared.file.path) {
+                    Button("Open Debug Log") { actions.openDebugLog() }
+                }
                 if store.snapshot.oneDrive != nil, !store.snapshot.axTrusted {
                     Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
                 }

@@ -145,6 +145,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func post(_ key: String, title: String, body: String, sound: Bool) {
+        debugLog("alert", "\(title) · \(body)\(systemAllowed ? "" : " (shown as Velum's banner)")")
         guard systemAllowed else {
             fallback?(title, body, sound)
             return

@@ -71,3 +71,4 @@ _Not started._
 
   The redaction corpus needs all three.
 - **More to report:** per service, the evidence each row used (OneDrive's report, iCloud's `brctl`, Google Drive's queue and pause), and where storage came from (Drive's cache or the optional sign-in). Never include the sign-in's tokens.
+- **A debug log exists now (November 12, the owner's request).** ••• → Debug Logging writes status changes, alerts, gaps and failures to `~/Library/Logs/Velum/Velum.log` (`Sources/Velum/DebugLog.swift`, 2 MB rotation). S2's export should include its recent lines, redacted like the rest, since that's where "what happened an hour ago" lives.

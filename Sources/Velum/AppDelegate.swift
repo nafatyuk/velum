@@ -250,17 +250,20 @@ enum AppModel {
             NSPasteboard.general.setString(config.folder.path, forType: .string)
         },
         startClient: { provider in
+            debugLog("action", "Start \(provider.name) (clicked in Velum)")
             if let id = provider.clientBundleID { ClientControl.launch(bundleID: id) }
             store.refresh(force: true)
         },
         restartClient: { provider in
             guard let id = provider.clientBundleID else { return }
+            debugLog("action", "Restart \(provider.name) (clicked in Velum)")
             notifier.userStopped[provider] = Date()
             ClientControl.restart(bundleID: id) { store.refresh(force: true) }
             store.refresh(force: true)
         },
         quitClient: { provider in
             guard let id = provider.clientBundleID else { return }
+            debugLog("action", "Quit \(provider.name) (clicked in Velum)")
             notifier.userStopped[provider] = Date()
             ClientControl.quit(bundleID: id)
             store.refresh(force: true)
@@ -281,6 +284,15 @@ enum AppModel {
         },
         dismissExactStatusTip: {
             store.exactStatusTipDismissed = true
+        },
+        setDebugLogging: { on in
+            store.debugLogging = on
+        },
+        openDebugLog: {
+            closePanel()
+            let file = DebugLog.shared.file
+            if FileManager.default.fileExists(atPath: file.path) { NSWorkspace.shared.open(file) }
+            else { NSWorkspace.shared.open(file.deletingLastPathComponent().deletingLastPathComponent()) }
         },
         setNotifications: { on in
             store.notificationsEnabled = on

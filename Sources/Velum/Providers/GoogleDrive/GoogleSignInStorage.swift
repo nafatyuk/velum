@@ -169,6 +169,7 @@ final class GoogleSignInStorage: @unchecked Sendable {
             }
         } catch {
             NSLog("Velum: Google storage for an account failed: \(error)")
+            debugLog("google", "Google sign-in storage check failed: \(error)")
         }
     }
 
@@ -348,6 +349,7 @@ extension GoogleSignInStorage {
                 wrongAccount(other, email)
             } catch {
                 NSLog("Velum: Google sign-in didn't finish: \(error)")
+                debugLog("google", "Google sign-in didn't finish: \(error)")
             }
         }
     }

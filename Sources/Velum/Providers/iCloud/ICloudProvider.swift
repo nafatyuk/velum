@@ -103,6 +103,8 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         queue.async { [self] in
             let quota = Self.run(["quota"], timeout: 15).flatMap(Self.parseQuota)
             let status = Self.run(["status", "com.apple.CloudDocs"], timeout: 40).flatMap { Self.parseStatus($0, at: Date()) }
+            if quota == nil { debugLog("icloud", "brctl quota gave no usable answer") }
+            if status == nil { debugLog("icloud", "brctl status gave no usable answer (timed out, failed or changed format)") }
             lock.lock()
             if let quota { self.quota = quota }
             if let status { self.report = status }
