@@ -97,6 +97,7 @@ final class UploadTracker: @unchecked Sendable {
     private var checkpoint: (id: FSEventStreamEventId, taken: Date)?
     private var recordUploads: Set<String> = []
     private var completed: [Activity] = []
+    private var uploadedCount: [String: Int] = [:]   // A6: uploads seen to finish per account since launch
     // Main thread only:
     private var streams: [String: Stream] = [:]
 
@@ -326,6 +327,7 @@ final class UploadTracker: @unchecked Sendable {
                     if completed.count > completedLimit { completed.removeLast(completed.count - completedLimit) }
                     completedDirty = true
                 }
+                if candidate.state != .unchecked { uploadedCount[candidate.account, default: 0] += 1 }   // A6, same rule
                 candidates[result.path] = nil
                 dirty = true
             case .done:
@@ -370,6 +372,14 @@ final class UploadTracker: @unchecked Sendable {
             persistIfDirty()
         }
         return UploadsSnapshot(watching: watched, accounts: summaries, completed: seen)
+    }
+
+    /// Uploads seen to finish per account since launch (seen waiting or uploading, then in the cloud), for
+    /// card A6's hourly history. Counts only.
+    func uploadedCounts() -> [String: Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return uploadedCount
     }
 
     /// How long a change may wait before its file counts as stuck: 10 minutes, the same as the stuck alert.

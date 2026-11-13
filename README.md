@@ -28,6 +28,10 @@ keeps working.
 - **A note after sleep or shutdown.** If files were still on their way up when the Mac slept, Velum says,
   once you've unlocked, whether they've uploaded since or still haven't. At log out or shut down it warns
   at once and checks again at the next launch. It never holds up sleep or shutdown.
+- **A week of history per account.** A thin line under each account shows its last 7 days, hour by hour:
+  uploads, quiet hours, stalls (files waiting 10 minutes with nothing uploaded) and failures, and blanks
+  where Velum wasn't watching. A stall of a day or more is named on the row. Kept 30 days, on this Mac
+  only, as counts: never file names.
 - **iCloud Drive too.** Its own row under an iCloud heading, with the same live upload tracking, the
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.
@@ -282,8 +286,8 @@ names `file-1.docx`, storage figures `<size>`. Velum never sends it anywhere; re
 1. Click Velum's cloud → ••• → Quit Velum, then delete `~/Applications/Velum.app`.
 2. Remove Velum from System Settings → General → Login Items and from Privacy & Security →
    Accessibility.
-3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain and the status
-   file `velumctl` reads), remove `/usr/local/bin/velumctl` if you linked it, and run
+3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain, the status
+   file `velumctl` reads, and the sync history), remove `/usr/local/bin/velumctl` if you linked it, and run
    `defaults delete io.github.nafatyuk.velum`.
 4. Turn OneDrive back on in System Settings → Menu Bar → Allow in the Menu Bar.
 

@@ -257,6 +257,7 @@ struct AccountRow: View {
     var compact = false
     let actions: PanelActions
     private let hover = State(initialValue: false)
+    @ObservedObject var history = History.shared   // A6: the history strip, its words and the stall note
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -273,6 +274,7 @@ struct AccountRow: View {
         .padding(.leading, 8)
         .padding(.trailing, 2)
         .padding(.vertical, compact ? 3 : 6)
+        .overlay(alignment: .bottom) { if !compact { SparklineView(line: historyLine) } }   // A6: in the bottom padding
         .background(HoverHighlight(isOn: hover.wrappedValue))
         .contentShape(Rectangle())
         .onHover { hover.wrappedValue = $0 }
@@ -286,8 +288,12 @@ struct AccountRow: View {
     /// What VoiceOver reads after the name and headline: the reason, the notes and the source with its age,
     /// with "min" and "hr" spelled out.
     private var spokenDetails: String {
-        Reasons.spoken([account.reason ?? "", account.notes, account.detail].filter { !$0.isEmpty }.joined(separator: ". "))
+        Reasons.spoken([account.reason ?? "", account.notes, detail, historyLine.summary].filter { !$0.isEmpty }.joined(separator: ". "))
     }
+
+    private var historyLine: HistoryLine { history.line(for: account.id) }   // A6
+    /// The source line, led by a stall of a day or more (A6): "Stalls seen since Tuesday · waiting since …".
+    private var detail: String { [historyLine.stallNote ?? "", account.detail].filter { !$0.isEmpty }.joined(separator: " · ") }
 
     @ViewBuilder private var top: some View {
             if compact {
@@ -341,8 +347,8 @@ struct AccountRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .help(account.notesHelp ?? "")
                 }
-                if !account.detail.isEmpty {
-                    Text(account.detail)
+                if !detail.isEmpty {
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)

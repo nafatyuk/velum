@@ -8,6 +8,7 @@ struct VelumApp: App {
     init() {
         GoogleSignInDebug.runIfAsked()
         if CommandLine.arguments.contains("--dump"), CommandLine.arguments.contains("--redact") { DiagnosticsReport.printFromTerminal(); exit(0) }   // card S2
+        HistoryProbe.runIfAsked()   // A6: --history-probe <seconds> <file.json>
         if CommandLine.arguments.contains("--dump") {
             DebugDump.run()
             exit(0)
@@ -47,6 +48,7 @@ enum DebugDump {
             snapshot.accounts += (2...4).flatMap { i in snapshot.accounts.map { $0.copy(suffix: i) } }
         }
         if CommandLine.arguments.contains("--sample-stuck") { snapshot.stuck = sampleStuck(snapshot.accounts) }
+        if sample != nil { HistorySample.apply(to: &snapshot, stall: CommandLine.arguments.contains("--sample-stall")) }   // A6
         let store = AppModel.store
         if let i = CommandLine.arguments.firstIndex(of: "--max-height"), i + 1 < CommandLine.arguments.count,
            let h = Double(CommandLine.arguments[i + 1]) {
@@ -118,6 +120,7 @@ enum DebugDump {
             if let reason = account.reason { print("    why: \(reason)") }
             if !account.notes.isEmpty { print("    \(account.notes)") }
             if !account.detail.isEmpty { print("    \(account.detail)") }
+            print("    history: \(History.shared.line(for: account.id).summary)")   // A6
             print("    folder: \(account.config.folder.path)")
             if account.config.watchRoots.count > 1 {
                 print("    also watching: \(account.config.watchRoots.dropFirst().map(\.path).joined(separator: ", "))")

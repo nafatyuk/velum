@@ -67,6 +67,7 @@ struct LegendView: View {
             heading("Recent and notes")
             ForEach(Self.notesLines(for: services), id: \.self) { line in bullet(line) }
                 .padding(.bottom, 2)
+            bullet(HistoryLine.legend(waitMinutes: max(1, Int(UploadTracker.stuckAfter / 60))))   // A6: the strip
         }
         .padding(.bottom, 10)
     }
