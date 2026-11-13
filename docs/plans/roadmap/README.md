@@ -21,7 +21,22 @@ The few items it deliberately doesn't build are under [Left out on purpose](#lef
 
 Each card is one session's work. Paste a card's "Brief" into a new session; it stands on its own.
 
-## Progress (November 12, 2026, afternoon)
+## Progress
+
+### November 13, 2026, overnight
+
+**9 of 25 cards done, and G1 partly.** While you slept, wave 2's three code cards were built side by side in their own worktrees, then merged into `main`:
+- A3, stuck files by name (merged at `22efa3d`);
+- A4, what each light means and how old it is (`688874b`);
+- A7, noticing when a sync app changes underneath (merged at `f07c78d`).
+
+Two smaller changes came from what you asked on November 12, outside any card:
+- **An opt-in debug log** (••• → Debug Logging, `a79be34`). OneDrive's self-update to 26.212 that evening left nothing to look back at; now status changes, alerts and failed checks can be written to `~/Library/Logs/Velum/Velum.log`.
+- **The Google sign-in item always shows** (`fe0b20e`), so there is a way back in after signing out.
+
+Wave 3 is running now: T1, A5, A6, S2 and G2, each in its own worktree. Their rows below change as they merge. The overnight decisions are in [Decisions the user makes](#decisions-the-user-makes), each marked "decided overnight" and yours to reverse.
+
+### November 12, 2026
 
 **6 of 25 cards done, and G1 partly.** Three came from the memo's "start this week":
 - C1, permission-free tracking (`0a85400`);
@@ -100,9 +115,9 @@ The campaign follows the memo's three horizons.
 | [A1 · "Safe to close the lid?"](cards/A1-safe-to-close-the-lid.md) | One line at the top of the panel: safe, N files on the way up, some can't upload, or Velum can't vouch | C1 | A2 | **done** (`d09e180`) |
 | [A2 · Problem alerts](cards/A2-problem-alerts.md) | An alert for failing uploads, a sync issue, uploads stuck for 10 minutes, or OneDrive stopping. A problem must last 30 s; it alerts once, then sends one "resolved" note. Velum's own banner stands in until R1 | C1 | A1 | **done** (`d09e180`); system notifications wait for R1 |
 | [C2 · One protocol, OneDrive as adapter one](cards/C2-sync-provider-protocol.md) | A `SyncProvider` protocol, with OneDrive moved behind it and nothing visible changed. A test target pins today's behavior | C1 | R1 | **done** (November 12, with P1) |
-| [A3 · Stuck files, by name](cards/A3-stuck-files.md) | Files waiting or failing past a threshold, listed in the panel with Show in Finder; the stuck alert names the first one | C2 | A4, A7, R2 | **done** November 13 (branch, awaiting merge) |
-| [A4 · What each light means, and how old it is](cards/A4-legend-and-why-unknown.md) | An icon legend. A "why is it unknown?" row saying what would make the status known. The age on every status, and old evidence shown as old | C2 | A3, A7, R2 | planned |
-| [A7 · Notice when OneDrive changes underneath](cards/A7-onedrive-update-check.md) | At launch and whenever OneDrive's version changes, each OneDrive internal Velum reads is checked against a tested-version note. Anything that no longer reads is dropped as evidence, with a reason, and the status degrades to unknown | C2 | A3, A4, R2 | planned |
+| [A3 · Stuck files, by name](cards/A3-stuck-files.md) | Files waiting or failing past a threshold, listed in the panel with Show in Finder; the stuck alert names the first one | C2 | A4, A7, R2 | **done** November 13 (merged at `22efa3d`) |
+| [A4 · What each light means, and how old it is](cards/A4-legend-and-why-unknown.md) | An icon legend. A "why is it unknown?" row saying what would make the status known. The age on every status, and old evidence shown as old | C2 | A3, A7, R2 | **done** November 13 (`688874b`) |
+| [A7 · Notice when OneDrive changes underneath](cards/A7-onedrive-update-check.md) | At launch and whenever OneDrive's version changes, each OneDrive internal Velum reads is checked against a tested-version note. Anything that no longer reads is dropped as evidence, with a reason, and the status degrades to unknown | C2 | A3, A4, R2 | **done** November 13, for all three services (merged at `f07c78d`) |
 | [R1 · Developer ID and a notarized DMG](cards/R1-developer-id-and-notarized-dmg.md) | Signed with your Developer ID and the hardened runtime. The app and the DMG are both notarized and stapled, with `spctl` as the gate. Real macOS notifications switch on | your enrolment | C2 | planned; **waits on your decision** |
 | [R2 · Updates through Sparkle](cards/R2-sparkle-updates.md) | Sparkle with an EdDSA key, an appcast, a `RELEASING.md` modelled on Crisp's, and a GitHub Release per version | R1 | A3, A4, A7 | planned |
 
@@ -216,7 +231,7 @@ flowchart LR
 
   classDef done fill:#e6f4ea,stroke:#34a853
   classDef gate stroke-dasharray: 5 5
-  class C1,A1,A2,C2,P1,P3 done
+  class C1,A1,A2,C2,P1,P3,A3,A4,A7 done
   class ICON,ENROL,TESTER,XCODE gate
 ```
 
@@ -244,7 +259,7 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 | R2 | Sparkle's update check would be Velum's second network use (after the optional Google sign-in): check automatically, or ask on first run | Sparkle's own first-run question; the README's network sentence names both, each only if you allow it |
 | R2 | Where the update feed lives | On the existing `gh-pages` site (`nafatyuk.github.io/velum/appcast.xml`), so Google's links keep working |
 | A2 | Once system notifications work: keep the "resolved" follow-up, or errors only (the consultant's default) | Keep as built: each problem, then one "resolved" note |
-| A3 | How long before a file counts as stuck | 10 minutes, the same as the stuck alert |
+| A3 | How long before a file counts as stuck | **Decided overnight:** 10 minutes, the suggested value; the defaults key `stuckAfterSeconds` changes it |
 | A5 | Warn only, or also hold off sleep briefly while uploads finish | Warn only; never hold up sleep or shutdown |
 | A6 | How much history to keep | 30 days, on this Mac only |
 | C3 | Show the generic tier's folders by default, or behind a switch | Shown, each labelled beta |
@@ -255,6 +270,7 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 | P2 | Who tests Dropbox (you don't use it) | Nobody yet: leave it gated |
 | P3 | Who maintains Google Drive | **Decided November 12:** you; done for streaming mode |
 | T2, T3 | Install Xcode | Only when someone asks for these |
+| Debug log | Whether a failing file's name may appear in the opt-in debug log. A3 raised it: its card kept names out of logs | **Decided overnight:** yes. The log is off unless you turn it on, stays on this Mac, and the panel already shows the same name; S2's export redacts it before anything leaves the Mac. Removing it is one line in `DebugLog.changes` |
 
 ## Rules every card follows
 

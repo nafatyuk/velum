@@ -1,6 +1,6 @@
 # A3 · Stuck files, by name
 
-**Bucket** A Assurance · **Part one** · **Status: done** November 13, 2026 (branch `claude/a3-stuck-files-647652`) · **Waits for** C2 · **Runs alongside** A4, A7, R2 · **Feeds** T1 (`velumctl pending`), S2
+**Bucket** A Assurance · **Part one** · **Status: done** November 13, 2026 (merged into `main` at `22efa3d`) · **Waits for** C2 · **Runs alongside** A4, A7, R2 · **Feeds** T1 (`velumctl pending`), S2
 
 ## Brief
 

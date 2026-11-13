@@ -1,6 +1,6 @@
 # A7 · Notice when a sync app changes underneath
 
-**Bucket** A Assurance · **Part one** · **Status: done** November 13, 2026, for OneDrive, Google Drive and iCloud's `brctl` (branch `claude/a7-update-check-333a3a`, not merged yet) · **Waits for** C2 · **Runs alongside** A3, A4, R2 · **Feeds** S2, P4, A4
+**Bucket** A Assurance · **Part one** · **Status: done** November 13, 2026, for OneDrive, Google Drive and iCloud's `brctl` (merged into `main` at `f07c78d`) · **Waits for** C2 · **Runs alongside** A3, A4, R2 · **Feeds** S2, P4, A4
 
 ## Brief
 

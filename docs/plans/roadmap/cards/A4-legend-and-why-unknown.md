@@ -1,6 +1,6 @@
 # A4 · What each light means, and how old it is
 
-**Bucket** A Assurance · **Part one** · **Status: done** on branch `claude/a4-legend-8be7c5`, November 13 (not merged) · **Waits for** C2 · **Runs alongside** A3, A7, R2 · **Feeds** P1, C3, S1 (they reuse its reason line and age text)
+**Bucket** A Assurance · **Part one** · **Status: done** November 13 (on `main` at `688874b`) · **Waits for** C2 · **Runs alongside** A3, A7, R2 · **Feeds** P1, C3, S1 (they reuse its reason line and age text)
 
 ## Brief
 
