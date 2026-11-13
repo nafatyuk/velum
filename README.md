@@ -139,6 +139,7 @@ To see what Velum sees without opening it:
 ```sh
 .build/release/Velum --dump                 # as it runs now
 .build/release/Velum --dump --no-icon-text  # as if Accessibility were off
+.build/release/Velum --dump --redact        # the diagnostics report, redacted, to attach to an issue
 ```
 
 ## Optional: Google sign-in for storage
@@ -236,11 +237,18 @@ wrong to `~/Library/Logs/Velum/Velum.log`:
 tokens, and rotates at 2 MB. Status lines can name a file that's failing to upload, as the panel does. It's
 off by default.
 
+To share what Velum sees, for example in an issue, use ••• → **Export Diagnostics…**. Velum writes a text
+report to `~/Library/Logs/Velum` and shows it in Finder. It has every account's status and evidence, the
+compatibility checks, the stuck files and the debug log's last 24 hours, with what Velum knows is personal
+replaced: account names and emails become "Account 1", organizations `<org 1>`, the home folder `~`, file
+names `file-1.docx`, storage figures `<size>`. Velum never sends it anywhere; read it before you share it.
+`Velum --dump --redact` prints the same report in Terminal.
+
 ## Limits
 
 - **It depends on OneDrive's undocumented internals.** OneDrive updates can change these files, so Velum
-  may show less until it's updated. If something looks wrong, open an issue with the `--dump` output
-  (it lists file names from your accounts, so redact what you need to).
+  may show less until it's updated. If something looks wrong, open an issue with the report from
+  ••• → Export Diagnostics… (see [the debug log](#troubleshooting-the-debug-log)), which redacts itself.
 - **Paused and other account-wide states can lag up to an hour**, because only OneDrive's hourly report
   carries them (unless OneDrive's own icon text is available).
 - **Renaming a folder while files inside it are still uploading** can make Velum lose sight of those

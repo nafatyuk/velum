@@ -93,6 +93,7 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
             // cache present it makes no request at all.
             let cached = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }
             let (storage, signInNote) = Self.storage(cached: cached, email: config.fallbackName)
+            account.storageSource = storage.map { $0.source == .driveCache ? "Google Drive’s cache on this Mac" : "the optional Google sign-in" } ?? "none (Google Drive’s cache has no figures)"   // S2
             if let storage {
                 account.notes.append(Self.storageNote(storage))
                 account.notesHelp = Self.storageHelp(storage)

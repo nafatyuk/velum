@@ -27,6 +27,7 @@ struct PanelActions {
     var setLoginItem: @MainActor (Bool) -> Void
     var quitApp: @MainActor () -> Void
     var setGoogleSignIn: @MainActor (_ email: String, _ on: Bool) -> Void = { GoogleSignInStorage.set($0, on: $1) }
+    var exportDiagnostics: @MainActor () -> Void = { DiagnosticsReport.exportFromMenu() }   // card S2
 }
 
 struct PanelView: View {
@@ -147,6 +148,7 @@ struct PanelView: View {
                 if store.debugLogging || FileManager.default.fileExists(atPath: DebugLog.shared.file.path) {
                     Button("Open Debug Log") { actions.openDebugLog() }
                 }
+                Button("Export Diagnostics…") { actions.exportDiagnostics() }
                 if store.snapshot.oneDrive != nil, !store.snapshot.axTrusted {
                     Button("Show OneDrive’s Exact Status…") { actions.enableExactStatus() }
                 }
@@ -550,7 +552,7 @@ struct LidRow: View {
 
     private func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
 
-    private var title: String {
+    var title: String {
         switch verdict {
         case .safe: "Safe to close the lid"
         case .pending, .busy: "Wait before closing the lid"
@@ -559,7 +561,7 @@ struct LidRow: View {
         }
     }
 
-    private var subtitle: String {
+    var subtitle: String {
         switch verdict {
         case .safe: "Every change in the watched cloud folders is in the cloud."
         case .pending(let n): "\(files(n)) still on the way up."

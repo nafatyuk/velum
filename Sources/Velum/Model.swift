@@ -67,6 +67,8 @@ struct AccountStatus: Identifiable, Equatable {
     var briefHeadline: String { lastReported.map(Reasons.briefOld) ?? headline }
     /// Why some of this account's evidence was dropped (card A7); also in `notes`.
     var compatibilityNote: String?
+    /// Where the storage figure in `notes` came from, for the diagnostics report (card S2).
+    var storageSource: String?
 
     var id: String { config.key }
     var provider: ProviderID { config.provider }
@@ -335,6 +337,7 @@ final class Collector: @unchecked Sendable {
         status.notesNeedAttention = account.notesNeedAttention
         status.storageFull = account.storageFull
         status.compatibilityNote = account.compatibilityNote   // A7
+        status.storageSource = account.storageSource   // S2
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first
@@ -386,6 +389,8 @@ final class Store: ObservableObject {
 
     var accounts: [AccountStatus] { snapshot.accounts }
     var activity: [Activity] { snapshot.activity }
+    /// Live transfers right now, for the diagnostics report (card S2).
+    var transferSnapshot: [String: TransferInfo] { transfers.snapshot() }
 
     /// The panel's title and the name VoiceOver gives the icon: the service's own name while there is only
     /// one, "Cloud Sync" once there are several.

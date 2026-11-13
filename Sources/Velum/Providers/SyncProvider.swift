@@ -91,6 +91,9 @@ struct AccountEvidence {
     var notesNeedAttention = false
     /// Out of storage (optional information: an alert and the heading, never the row's state).
     var storageFull = false
+    /// Where the storage figure came from ("Google Drive’s cache on this Mac", "brctl quota"), or why there is
+    /// none, for the diagnostics report (card S2). Never the figure itself.
+    var storageSource: String?
     /// Why the provider has no status for this account, and what would end it ("Checking iCloud now. This
     /// takes about 15 seconds."). Shown under a row that ends up unknown with no report.
     var unknownReason: String?
