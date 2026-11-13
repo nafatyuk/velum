@@ -158,20 +158,23 @@ left a seam for. The owner's words: "a distinctly OPTIONAL thing: people can use
 Velum can do and show, but for core functions it isn't needed. But it is very much there."
 
 **What it does.**
-- Per Google account, off by default, in Fable's wording. ••• → **Show Storage…** shows an alert ("Show
-  storage for <email>?", with "Continue in Browser"), then opens Google's consent page in the default
-  browser. After that, the row's storage comes from the Drive API whenever Google Drive's own cache has no
+- Per Google account, off by default, in Fable's wording (sent by the main session). ••• → **Show
+  Storage…** shows the consult's alert ("Show storage for <email>?" … "Continue in Browser"), then opens
+  Google's consent page in the default browser. After that, the row's storage comes from the Drive API whenever Google Drive's own cache has no
   figures, with the main session's note format ("… from your Google sign-in, 3 min ago").
 - **The cache always wins.** The provider asks `signInStorage` and `signInNote` only when the cache is
   empty (now through one helper, `GoogleDriveProvider.storage(cached:email:)`, so it's tested), and only
   that question starts a fetch, so a cache with figures means no request at all. The same question tells
-  the menu whether "Show Storage…" would show anything: the item appears only while the cache is empty.
+  the menu whether "Show Storage…" would show anything: it appears only while the cache is empty, and once
+  the sign-in is on, "Stop Showing Storage" is always offered.
 - **Stop Showing Storage** revokes the grant at Google (`oauth2.googleapis.com/revoke`), deletes the
   Keychain item and clears the switch. After `invalid_grant` the row says "Storage not shown · sign in again
-  from the ••• menu", and the menu offers **Sign In Again…**. With the cache showing storage again, an old
-  sign-in shows only **Remove Google Sign-In**, the session's own wording for a case the consult didn't cover.
-- Notes: "Waiting for Google sign-in…" while the browser is open, and "Storage not shown · the Google
-  sign-in is for <other>" when Google's email isn't the row's.
+  from the ••• menu", and the menu offers **Sign In Again…** beside it.
+- While the browser is open: the note "Waiting for Google sign-in…" and **Cancel Sign-In**; it reverts
+  silently after 5 minutes.
+- **A sign-in as another account is revoked and discarded,** with the alert "That was <other>. Sign in as
+  <email> to show its storage." If Google ever reports a different email later, the row says "Storage not
+  shown · the Google sign-in is for <other>" and shows no figures.
 - With the switch off: no network connections and no Keychain reads (tested).
 
 **How.** `Providers/GoogleDrive/GoogleSignIn.swift` (OAuth) and `GoogleSignInStorage.swift` (per-account
@@ -199,10 +202,15 @@ state, Keychain, menu items, debug commands).
   (185.97 GiB), Drive 568,993,831. That matches Drive's local cache to the byte.
 - `--google-storage <email>` then fetched again through the Keychain's refresh token, with no Keychain
   prompt (same signing identity).
-- Tests: 26 for the sign-in, covering token handling with a stubbed network (exchange fields, refresh,
-  `invalid_grant`, a 401 retried once), quota parsing with and without a limit, the email mismatch, "off
-  makes no request" (and no Keychain read), "the cache wins", the menu's rules, and a real loopback
-  round-trip. `Scripts/test.sh`: 80 tests pass.
+- Tests: 28 for the sign-in, covering:
+  - token handling with a stubbed network: exchange fields, refresh, `invalid_grant`, a 401 retried once;
+  - quota parsing with and without a limit;
+  - the email mismatch, at sign-in (discarded and revoked) and later;
+  - "off makes no request", and no Keychain read;
+  - "the cache wins", and the menu's rules;
+  - the whole sign-in through the real loopback port, with the test playing the browser.
+
+  `Scripts/test.sh`: 82 tests pass.
 - His switch is on and his token is in the Keychain, but his cache has figures, so the sign-in stays idle.
 
 **Google Cloud setup (owner's Gmail, Claude in Chrome, with the owner awake).**
@@ -224,6 +232,4 @@ state, Keychain, menu items, debug commands).
 - **Merging.** This branch carries `main` up to `586f1c7`. After merging, copy
   `~/Library/Application Support/Velum/GoogleOAuthClient.plist` into `Resources/` before
   `./build.sh --install`; without it the installed build hides the items.
-- The alert's text and "Remove Google Sign-In" are the session's own wording, in the consult's spirit.
-  Review them with the next consult.
 - `--google-storage <email>` and `--google-sign-out <email>` remain for testing.

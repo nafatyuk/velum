@@ -51,6 +51,8 @@ enum GoogleSignInError: Error, Equatable {
     case unexpected(String)
     /// An HTTP status other than 200 (401 from the Drive API means the access token went stale).
     case http(Int)
+    /// The user signed in as another Google account (its address); that sign-in was discarded.
+    case otherAccount(String)
 }
 
 /// Sends a request and returns the body and HTTP status. The live one is `URLSession`; tests stub it.

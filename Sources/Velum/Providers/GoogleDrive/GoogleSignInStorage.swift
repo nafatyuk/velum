@@ -205,7 +205,8 @@ final class GoogleSignInStorage: @unchecked Sendable {
     // MARK: Turning it on and off
 
     /// Signs in to Google for this account (the consent page opens in the default browser) and turns the
-    /// switch on. Returns the first figures; throws when the user declines or the sign-in fails.
+    /// switch on. Returns the first figures; throws when the user declines or the sign-in fails. A sign-in
+    /// as another Google account is revoked and discarded (`otherAccount`), and nothing changes.
     @discardableResult
     func signIn(_ email: String, open: (URL) -> Void) async throws -> GoogleAbout {
         guard let auth else { throw GoogleSignInError.unexpected("this build has no Google OAuth client") }
@@ -224,6 +225,10 @@ final class GoogleSignInStorage: @unchecked Sendable {
         }
         let (fresh, about) = try await auth.signIn(loginHint: email, receiver: receiver, open: open, now: now)
         guard let refresh = fresh.refresh else { throw GoogleSignInError.unexpected("no refresh token") }
+        if let signedIn = about.email, Self.key(signedIn) != key {
+            await auth.revoke(refresh)
+            throw GoogleSignInError.otherAccount(signedIn)
+        }
         // A sign-in again replaces the old grant; revoke the old one so it doesn't linger at Google.
         if let old = tokens.read(key), old != refresh { await auth.revoke(old) }
         try tokens.write(refresh, for: key)
@@ -335,40 +340,52 @@ extension GoogleSignInStorage {
             return
         }
         AppModel.closePanel()
-        guard confirm(email, again: phase == .expired) else { return }
+        guard confirm(email) else { return }
         Task {
             do {
                 try await shared.signIn(email) { NSWorkspace.shared.open($0) }
+            } catch GoogleSignInError.otherAccount(let other) {
+                wrongAccount(other, email)
             } catch {
                 NSLog("Velum: Google sign-in didn't finish: \(error)")
             }
         }
     }
 
+    // Alert wording decided by the Fable consultant (November 12).
+
     @MainActor
-    private static func confirm(_ email: String, again: Bool) -> Bool {
+    private static func confirm(_ email: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = again ? "Sign in to Google again?" : "Show storage for \(email)?"
-        alert.informativeText = "Velum will open Google in your browser. Google will ask to let Velum use only "
-            + "the Drive files you use with it; Velum uses none, and reads only how much storage the account "
-            + "has. The sign-in stays in your Keychain, and Stop Showing Storage removes it."
+        alert.messageText = "Show storage for \(email)?"
+        alert.informativeText = "Velum opens Google’s sign-in in your browser and then checks your storage about "
+            + "every 30 minutes. This is the only time Velum uses the network. Google’s page will mention Drive "
+            + "files you use with Velum; there are none, and Velum can’t see your files, mail or photos."
         alert.addButton(withTitle: "Continue in Browser")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    /// The row's ••• items (Fable's wording): offered only when Drive's cache has no figures, since that's
-    /// the only time the sign-in shows anything. With the cache showing storage, an existing sign-in can only
-    /// be removed. Each item: its title, and whether it turns the sign-in on.
+    @MainActor
+    private static func wrongAccount(_ other: String, _ email: String) {
+        let alert = NSAlert()
+        alert.messageText = "That was \(other)."
+        alert.informativeText = "Sign in as \(email) to show its storage."
+        NSApp.activate()
+        alert.runModal()
+    }
+
+    /// The row's ••• items (Fable's wording), under Manage Storage. "Show Storage…" only when Drive's cache
+    /// has no figures for the account, since that's the only time the sign-in shows anything; once on, the
+    /// way off is always there. Each item: its title, and whether it turns the sign-in on.
     static func menuItems(phase: Phase, cacheLacksFigures: Bool) -> [(title: String, on: Bool)] {
         switch phase {
         case .unavailable: return []
         case .off: return cacheLacksFigures ? [("Show Storage…", true)] : []
         case .signingIn: return [("Cancel Sign-In", true)]
-        case .expired where cacheLacksFigures: return [("Sign In Again…", true), ("Stop Showing Storage", false)]
-        case .on where cacheLacksFigures: return [("Stop Showing Storage", false)]
-        case .on, .expired: return [("Remove Google Sign-In", false)]
+        case .on: return [("Stop Showing Storage", false)]
+        case .expired: return [("Sign In Again…", true), ("Stop Showing Storage", false)]
         }
     }
 

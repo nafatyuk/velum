@@ -37,9 +37,9 @@ keeps working.
 - **Quick actions.** Open an account's folder or its web view, its recycle bin or trash (iCloud: Recover
   Deleted Files), storage page; start, restart or quit OneDrive and Google Drive; open at login.
 
-Velum needs no special permissions, never modifies any sync app's files or settings, and makes no
-network connections, unless you turn on the [optional Google sign-in](#optional-google-sign-in-for-storage).
-The only things it does to OneDrive are the Restart and Quit OneDrive commands you click, and Start for a
+Velum needs no special permissions and never modifies any sync app's files or settings. It makes no
+network connections, unless you turn on [Show Storage](#optional-google-sign-in-for-storage) for a Google
+account; then only Google's sign-in and the Drive API. The only things it does to OneDrive are the Restart and Quit OneDrive commands you click, and Start for a
 sync app that isn't running; everything else it only reads.
 
 ## Requirements
@@ -129,8 +129,9 @@ To see what Velum sees without opening it:
 Velum shows a Google account's storage from Google Drive for desktop's own local cache, with no sign-in.
 If that cache ever has no figures for an account (a future Google Drive that stops keeping them), you can
 let Velum ask Google instead: the Google account row's ••• menu → **Show Storage…**, which says what will
-happen and then opens Google in your browser. The item appears only while Google Drive's cache has no
-figures for that account. It's off by default, per account, and Velum works fully without it.
+happen and then opens Google's sign-in in your browser. The item appears only while Google Drive's cache
+has no figures for that account; once it's on, **Stop Showing Storage** is always there. It's off by
+default, per account, and Velum works fully without it.
 
 - **What it adds:** the account's storage (used, of how much, and how much is Drive), refreshed about
   every 30 minutes and when you open the panel. Velum uses these figures only when Google Drive's cache
@@ -138,16 +139,15 @@ figures for that account. It's off by default, per account, and Velum works full
 - **What it asks Google for:** the `drive.file` permission only. It covers files an app creates or you
   open with it; Velum creates none, so it can't see any of your files. Google's consent page says so. Under
   it, Drive's `about` call still answers with the account's email and storage quota, which is all Velum
-  reads. If the email isn't the row's account, Velum says so and shows no figures.
+  reads. If you sign in as a different Google account, Velum discards that sign-in and says so.
 - **Velum's one network connection,** only while it's on: your browser opens Google's consent page, Google
   redirects back to a temporary port on `127.0.0.1`, and Velum talks to `oauth2.googleapis.com` (tokens)
   and `www.googleapis.com` (storage). With it off, Velum makes no connections and reads nothing from the
   Keychain.
 - **What it keeps:** the refresh token, in your login Keychain as "Velum Google Sign-In" (one item per
   account email), and the on/off switch in Velum's preferences.
-- **Turning it off** (••• → Stop Showing Storage, or Remove Google Sign-In once Google Drive's cache has
-  figures again) revokes the grant at Google, deletes the Keychain item and clears the switch. If the
-  sign-in expires or you remove Velum's access in your Google Account, the row quietly says "Storage not
+- **Turning it off** (••• → Stop Showing Storage) revokes the grant at Google, deletes the Keychain item
+  and clears the switch. If the sign-in expires or you remove Velum's access in your Google Account, the row quietly says "Storage not
   shown · sign in again from the ••• menu" (••• → Sign In Again…); Velum never pops anything up on its own.
 - **Privacy policy:** <https://nafatyuk.github.io/velum/privacy.html> (served from this repo's `gh-pages`
   branch, which Google's consent screen links to).

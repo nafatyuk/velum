@@ -153,6 +153,65 @@ import Testing
         await #expect(throws: GoogleSignInError.cancelled) { try await waiting.value }
     }
 
+    // MARK: The whole sign-in, with the test playing the browser
+
+    /// Follows Google's redirect back to Velum's loopback port with a code, as the browser would after Allow.
+    static func browser(code: String = "4/the-code") -> (URL) -> Void {
+        { url in
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+            let redirect = items.first { $0.name == "redirect_uri" }!.value!
+            let state = items.first { $0.name == "state" }!.value!
+            Task.detached {
+                _ = try? await URLSession(configuration: .ephemeral).data(from: URL(string: "\(redirect)/?state=\(state)&code=\(code)")!)
+            }
+        }
+    }
+
+    /// A Google whose token endpoint hands out a new grant, and whose `about` answers with `about`.
+    static func consentingGoogle(about: Data = aboutWithLimit) -> StubTransport {
+        StubTransport { request in
+            if request.url == GoogleEndpoint.token {
+                return (json(["access_token": "new-access", "expires_in": 3599, "refresh_token": "new-refresh"]), 200)
+            }
+            if request.url == GoogleEndpoint.about { return (about, 200) }
+            return (Data(), 200)
+        }
+    }
+
+    @Test func signingInTurnsItOnAndKeepsTheToken() async throws {
+        let google = Self.consentingGoogle()
+        let tokens = MemoryTokens()
+        let (storage, defaults) = Self.make(google, tokens: tokens, on: false)
+        let about = try await storage.signIn(Self.email, open: Self.browser())
+        #expect(about.email == Self.email)
+        #expect(tokens.items[Self.email] == "new-refresh")
+        #expect(defaults.stringArray(forKey: GoogleSignInStorage.defaultsKey) == [Self.email])
+        #expect(storage.phase(for: Self.email) == .on)
+        #expect(storage.peek(Self.email)?.used == 5_368_709_120)
+        let exchange = Self.form(google.requests[0])
+        #expect(exchange["code"] == "4/the-code")
+        #expect(exchange["grant_type"] == "authorization_code")
+        #expect(exchange["redirect_uri"]?.hasPrefix("http://127.0.0.1:") == true)
+        #expect(google.requests[1].value(forHTTPHeaderField: "Authorization") == "Bearer new-access")
+    }
+
+    @Test func aSignInAsAnotherAccountIsDiscarded() async {
+        let other = Self.json(["user": ["emailAddress": "somebody.different@gmail.com"], "storageQuota": ["usage": "1"]])
+        let google = Self.consentingGoogle(about: other)
+        let tokens = MemoryTokens()
+        let (storage, defaults) = Self.make(google, tokens: tokens, on: false)
+        await #expect(throws: GoogleSignInError.otherAccount("somebody.different@gmail.com")) {
+            try await storage.signIn(Self.email, open: Self.browser())
+        }
+        #expect(tokens.items.isEmpty)
+        #expect(defaults.stringArray(forKey: GoogleSignInStorage.defaultsKey) == nil)
+        #expect(storage.phase(for: Self.email) == .off)
+        #expect(storage.peek(Self.email) == nil)
+        let revoke = google.requests.last
+        #expect(revoke?.url == GoogleEndpoint.revoke)                  // the stray grant doesn't linger at Google
+        #expect(revoke.map(Self.form)?["token"] == "new-refresh")
+    }
+
     // MARK: Quota
 
     @Test func quotaWithALimit() throws {
@@ -309,8 +368,8 @@ import Testing
         #expect(titles(.off, false) == [])                              // the cache already shows storage
         #expect(titles(.signingIn, true) == ["Cancel Sign-In"])
         #expect(titles(.on, true) == ["Stop Showing Storage"])
+        #expect(titles(.on, false) == ["Stop Showing Storage"])         // once on, the way off is always there
         #expect(titles(.expired, true) == ["Sign In Again…", "Stop Showing Storage"])
-        #expect(titles(.on, false) == ["Remove Google Sign-In"])        // nothing to stop showing; just remove it
         #expect(GoogleSignInStorage.menuItems(phase: .off, cacheLacksFigures: true).map(\.on) == [true])
         #expect(GoogleSignInStorage.menuItems(phase: .on, cacheLacksFigures: true).map(\.on) == [false])
     }
