@@ -5,12 +5,14 @@ enum ProviderID: String, CaseIterable, Codable {
     case oneDrive = "onedrive"
     case iCloud = "icloud"
     case googleDrive = "googledrive"
+    case cloudStorage = "cloudstorage"   // card C3: any other File Provider folder, beta
 
     var name: String {
         switch self {
         case .oneDrive: "OneDrive"
         case .iCloud: "iCloud"
         case .googleDrive: "Google Drive"
+        case .cloudStorage: "Other Cloud Folders"
         }
     }
 
@@ -20,6 +22,7 @@ enum ProviderID: String, CaseIterable, Codable {
         case .oneDrive: "Recycle Bin"
         case .iCloud: "Recover Deleted Files…"
         case .googleDrive: "Trash"
+        case .cloudStorage: "Trash"
         }
     }
 
@@ -29,6 +32,7 @@ enum ProviderID: String, CaseIterable, Codable {
         case .oneDrive: oneDriveBundleID
         case .iCloud: nil
         case .googleDrive: "com.google.drivefs"
+        case .cloudStorage: nil   // many apps, none Velum starts or stops
         }
     }
 }
@@ -99,6 +103,8 @@ struct AccountEvidence {
     /// Why the provider has no status for this account, and what would end it ("Checking iCloud now. This
     /// takes about 15 seconds."). Shown under a row that ends up unknown with no report.
     var unknownReason: String?
+    /// The headline with no status and no report, when "Can’t tell yet" would promise an end (C3: "Can’t tell").
+    var unknownHeadline: String?
     /// Why some of this account's evidence was dropped (card A7: "Can’t read OneDrive 27.0’s status report ·
     /// uploads are still tracked"). Also first in `notes`, so it shows today; card A4's reason line can use it.
     var compatibilityNote: String?
@@ -152,7 +158,7 @@ struct AccountConfig: Equatable, Identifiable {
     let watchRoots: [URL]           // every folder whose changes count
     let places: [NamedRoot]         // every path that leads into the account (symlinks included)
     let fallbackName: String
-    let webURL: URL
+    let webURL: URL?                // nil: no web address Velum knows (the generic tier, C3)
     var recycleBinURL: URL? = nil
     var storageURL: URL? = nil
     /// The service keeps its own history (OneDrive's activity list). Without one, Velum records the

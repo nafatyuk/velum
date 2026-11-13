@@ -35,6 +35,11 @@ keeps working.
   tracking. "Up to date" also needs Google Drive's own queue of pending work to be empty, a paused Google
   Drive says "Paused", and each account shows its free Google storage ("214 GB free of 400 GB"), read
   from Google Drive's own copy on your Mac, with no sign-in.
+- **Other cloud folders, in beta.** Any other sync app that keeps its folders in `~/Library/CloudStorage`
+  (Dropbox, Box, Proton Drive, Nextcloud and others) gets a row under "Other Cloud Folders", with the
+  files waiting, uploading or failing that macOS reports for it. Velum hasn't been tested with these apps,
+  so each row says "Beta", never says "Up to date", and the lid line won't say "safe" while one is shown.
+  ••• → Show Other Cloud Folders turns them off; they're then not watched at all.
 - **Every account at a glance.** Live status for each account: files uploading, waiting to upload or
   failing (with the reason), downloads in progress, and when it last did something. Each status says
   where it came from, and Velum never says "Up to date" without evidence.
@@ -55,6 +60,7 @@ sync app that isn't running; everything else it only reads.
 - macOS 26 or later (built and tested on macOS 27; iCloud's `brctl` answers tested on macOS 27.3).
 - OneDrive for Mac, signed in to one or more accounts (tested with OneDrive 26.204 and 26.212).
 - Google Drive for desktop, if you use it, in its default streaming mode (tested with Google Drive 133).
+- Other apps with folders in `~/Library/CloudStorage`: shown in beta, untested with any of them.
 - Xcode or the Command Line Tools (`xcode-select --install`) to build it.
 
 ## Install
@@ -113,6 +119,10 @@ Each account's status line names its source:
   or waiting right now and macOS's `brctl status`, checked every 10 minutes, calls iCloud Drive caught up.
   It's old after 25 minutes.
 - **From OneDrive, live.** OneDrive's own icon text, when you've turned that option on and its icons exist.
+- **Other cloud folders (beta)** have only macOS's evidence: files waiting, uploading, failing or
+  downloading. With nothing moving, the row says "Can't tell" and "macOS shows nothing waiting to upload",
+  because Velum can't read the app's own status. The app's name comes from the File Provider extension
+  macOS records on the folder, found inside the installed app; when that fails, the row says "app unknown".
 
 When Velum has no evidence it says "Can't tell" ("Can't tell yet" while it waits for a first answer), with a
 grey question mark, a line saying why and what would end it, and the menu bar's plain cloud. The ⓘ in the
@@ -144,6 +154,8 @@ keystrokes.
 | The `operations` table in `~/Library/Application Support/Google/DriveFS/<account>/metadata_sqlite_db` | whether Google Drive still has work queued |
 | The `driveway_account` record in the same database | the account's Google storage |
 | `~/Library/Application Support/Google/DriveFS/user-paused` | whether Google Drive is paused |
+| FSEvents, per-file sync flags and transfer progress for every other live folder in `~/Library/CloudStorage` | other cloud folders' live uploads, waiting files, upload errors, downloads (beta) |
+| The `com.apple.file-provider-domain-id` attribute on those folders, and the app bundle that ships that extension | which app syncs each other cloud folder |
 
 To see what Velum sees without opening it:
 
@@ -274,6 +286,10 @@ names `file-1.docx`, storage figures `<size>`. Velum never sends it anywhere; re
   on your Mac; the Google Drive API is used only if you turn on the optional sign-in.
 - **iCloud's and Google Drive's Recent lists are partial.** They show only uploads Velum saw finish
   while it was running, not downloads or changes from your other devices.
+- **Other cloud folders are beta.** Velum reads nothing of Dropbox's, Box's or any other such app's own
+  state: not paused, not signed out, not whether the app runs. Their rows never say "Up to date", and
+  while one is shown the lid line can't say "safe". Dropbox's older folder at `~/Dropbox`, outside
+  `~/Library/CloudStorage`, isn't covered.
 - **Personal accounts have no recycle bin link**, because OneDrive offers no stable address for it.
   Storage totals aren't stored locally, so Manage Storage opens OneDrive's web page.
 

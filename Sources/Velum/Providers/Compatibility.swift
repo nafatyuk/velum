@@ -155,6 +155,7 @@ extension ProviderID {
         case .oneDrive: ["26.204", "26.212"]
         case .googleDrive: ["133"]
         case .iCloud: ["27.3"]          // macOS: iCloud's `brctl` comes with it
+        case .cloudStorage: ["27.3"]    // macOS, whose File Provider the generic tier reads; no client tested (C3)
         }
     }
 

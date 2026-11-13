@@ -558,6 +558,11 @@ private func googleSnapshot(queued: Int?) -> Snapshot {
         #expect(iCloud.title == "Not in the cloud yet")
     }
 
+    @Test func otherCloudFoldersNameNoApp() {   // C3: "the next time Other Cloud Folders runs" would be wrong
+        let words = SleepGuard.powerOffWords(watch([("/Users/test/a", "cloudstorage:Example")], services: ["cloudstorage:Example": .cloudStorage]))
+        #expect(words.body == "1 file isn’t in the cloud yet. It’ll upload after you log in again.")
+    }
+
     @Test func shutdownWithOnlyAQueue() {
         let words = SleepGuard.powerOffWords(watch([], services: ["g": .googleDrive], queues: ["g"]))
         #expect(words.title == "Google Drive hasn’t finished")

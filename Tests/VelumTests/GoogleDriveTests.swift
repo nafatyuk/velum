@@ -13,7 +13,7 @@ import Testing
         #expect(c.fallbackName == "someone.else@gmail.com")
         #expect(c.watchRoots == [root])
         #expect(c.keepsOwnHistory == false)
-        #expect(c.webURL.absoluteString == "https://drive.google.com/drive/my-drive?authuser=someone.else@gmail.com")
+        #expect(c.webURL?.absoluteString == "https://drive.google.com/drive/my-drive?authuser=someone.else@gmail.com")
         #expect(c.recycleBinURL?.absoluteString == "https://drive.google.com/drive/trash?authuser=someone.else@gmail.com")
         #expect(c.location(of: root.path + "/My Drive/Classes/a.pdf") == "In My Drive/Classes")
         #expect(c.location(of: root.path + "/Shared drives/Lab/b.pdf") == "In Shared drives/Lab")

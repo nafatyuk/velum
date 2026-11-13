@@ -124,7 +124,7 @@ struct LegendView: View {
     static let oldRule = "An old report is never green. The lid line never uses reports: only live file tracking, its coverage, running apps and live queues."
 
     static func sourceLines(for services: [ProviderID]) -> [String] {
-        var lines = ["macOS, live: files waiting, uploading or failing, in every service. Only this decides the lid line."]
+        var lines = ["macOS, live: files waiting, uploading or failing, in every service. The lid line trusts only live evidence, never a periodic report."]
         for service in services {
             switch service {
             case .oneDrive:
@@ -133,6 +133,8 @@ struct LegendView: View {
                 lines.append("iCloud: a status check Velum runs every \(Int(ICloudProvider.checkInterval / 60)) minutes. Old after \(oldAfter(ICloudProvider.checkInterval)) minutes.")
             case .googleDrive:
                 lines.append("Google Drive: its own queue and pause, live. If Velum can’t read the queue, the row says so.")
+            case .cloudStorage:
+                lines.append(GenericText.legend)
             }
         }
         return lines
@@ -140,7 +142,7 @@ struct LegendView: View {
 
     static func notesLines(for services: [ProviderID]) -> [String] {
         var lines: [String] = []
-        let partial = services.filter { $0 != .oneDrive }.map(\.name)
+        let partial = services.filter { $0 != .oneDrive }.map { $0.isBeta ? "other cloud folders" : $0.name }   // C3: lower case in prose
         if services.contains(.oneDrive) {
             lines.append(partial.isEmpty ? "Recent: OneDrive’s own history."
                          : "Recent: OneDrive’s own history. For \(CompatibilityText.list(partial)), only uploads Velum saw finish while it was running.")

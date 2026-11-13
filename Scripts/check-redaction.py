@@ -115,6 +115,14 @@ def add_cloud_folder(found, folder):
         found.add("organization", camel_split(rest))
     elif folder.startswith("GoogleDrive-"):
         found.add("email", folder[len("GoogleDrive-"):])
+    elif "-" in folder.lstrip("-") and not folder.startswith("."):
+        # Card C3's generic tier: "<App>-<account>" ("Dropbox-Personal", "ProtonDrive-someone@example.com-folder").
+        # The app's name isn't personal; the account part is, and so is any address inside it.
+        client, _, account = folder.partition("-")
+        if account and account != client:
+            found.add("account name", account)
+            for address in re.findall(SHAPES["an email address"], account):
+                found.add("email", address)
 
 
 def synced_roots():
