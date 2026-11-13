@@ -249,22 +249,20 @@ enum AppModel {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(config.folder.path, forType: .string)
         },
-        startOneDrive: {
-            OneDriveControl.launch()
-            store.refresh(force: true)
-        },
         startClient: { provider in
             if let id = provider.clientBundleID { ClientControl.launch(bundleID: id) }
             store.refresh(force: true)
         },
-        restartOneDrive: {
-            notifier.userStoppedOneDriveAt = Date()
-            OneDriveControl.restart { store.refresh(force: true) }
+        restartClient: { provider in
+            guard let id = provider.clientBundleID else { return }
+            notifier.userStopped[provider] = Date()
+            ClientControl.restart(bundleID: id) { store.refresh(force: true) }
             store.refresh(force: true)
         },
-        quitOneDrive: {
-            notifier.userStoppedOneDriveAt = Date()
-            OneDriveControl.quit()
+        quitClient: { provider in
+            guard let id = provider.clientBundleID else { return }
+            notifier.userStopped[provider] = Date()
+            ClientControl.quit(bundleID: id)
             store.refresh(force: true)
         },
         openMenuBarSettings: {
@@ -387,30 +385,31 @@ enum ClientControl {
     }
 }
 
-@MainActor
-enum OneDriveControl {
-    static func launch() {
-        ClientControl.launch(bundleID: oneDriveBundleID)
-    }
-
-    static func quit() {
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: oneDriveBundleID) {
+extension ClientControl {
+    /// Asks every running copy of the app to quit, as the Quit menu item would.
+    static func quit(bundleID: String) {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
             app.terminate()
         }
     }
 
-    static func restart(completion: @escaping @MainActor () -> Void) {
-        quit()
+    /// Quits the app, waits up to ~10 s for it to finish, and starts it again in the background.
+    static func restart(bundleID: String, completion: @escaping @MainActor () -> Void) {
+        quit(bundleID: bundleID)
         Task { @MainActor in
-            for _ in 0..<50 {   // give OneDrive up to ~10 s to shut down cleanly
-                let running = NSRunningApplication.runningApplications(withBundleIdentifier: oneDriveBundleID)
+            for _ in 0..<50 {
+                let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
                 if running.allSatisfy(\.isTerminated) { break }
                 try? await Task.sleep(for: .milliseconds(200))
             }
-            launch()
+            launch(bundleID: bundleID)
             completion()
         }
     }
+}
+
+@MainActor
+enum OneDriveControl {
 
     /// Shows the file in Finder; for deleted or moved items, opens the nearest folder that still exists.
     static func reveal(_ item: Activity) {

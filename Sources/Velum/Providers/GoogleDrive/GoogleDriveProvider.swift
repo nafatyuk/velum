@@ -1,6 +1,25 @@
 import AppKit
 import SQLite3
 
+/// Storage for one Google account, shared by Drive, Gmail and Photos.
+struct GoogleStorage: Equatable {
+    var limit: Int64?          // nil = unlimited plan
+    var used: Int64            // whole account
+    var usedInDrive: Int64?
+    var source: Source
+    var asOf: Date
+    enum Source: Equatable { case driveCache, googleSignIn }
+
+    var free: Int64? { limit.map { max(0, $0 - used) } }
+    /// Under 100 MB left (Fable's line: past that, new files won't fit).
+    var isFull: Bool { free.map { $0 < 100 * 1_048_576 } ?? false }
+    /// Past 90% and under 10 GB left, so a big plan with plenty of room stays quiet.
+    var isAlmostFull: Bool {
+        guard let limit, limit > 0, let free, !isFull else { return false }
+        return Double(used) / Double(limit) >= 0.9 && free < 10 * 1_073_741_824
+    }
+}
+
 /// Google Drive for desktop as a provider. Verified on macOS 27.3 with Drive 133 (November 2026):
 /// - Each signed-in account streams through Apple's File Provider into
 ///   `~/Library/CloudStorage/GoogleDrive-<email>` (My Drive, Shared drives, …). File Provider's per-file
@@ -9,6 +28,9 @@ import SQLite3
 /// - Accounts are discovered from those folders on every pass, so any number of accounts can come and go;
 ///   a folder whose File Provider domain is gone (signed out, app removed) no longer reads as synced and
 ///   drops out. One app process (`com.google.drivefs`) serves every account.
+/// - Drive also caches the account's storage there (the `driveway_account` property, a protobuf) and
+///   marks a pause with an empty `user-paused` file at the top of DriveFS, so storage and "Paused" need no
+///   sign-in. The optional Google sign-in (`signInStorage`) only fills in storage the cache lacks.
 /// - Drive's own data (`~/Library/Application Support/Google/DriveFS/<id>/`, matched to an account through
 ///   the `my-drive` symlink inside it) has an `operations` table in `metadata_sqlite_db`: Drive's queue of
 ///   pending work, which held rows while a probe uploaded and was deleted and emptied afterwards. An empty
@@ -25,6 +47,16 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     private var lastDiscovery = Date.distantPast
     private var queueCache: [String: (stamp: Date?, count: Int?)] = [:]
     private var busySince: [String: Date] = [:]
+    private var storageCache: [String: (stamp: Date?, value: GoogleStorage?)] = [:]
+
+    /// Storage from the optional Google sign-in, for accounts whose Drive cache has none. Set once at launch
+    /// by the sign-in feature; called on the collector's queue every refresh: return cached figures, never block.
+    nonisolated(unsafe) static var signInStorage: (_ email: String) -> GoogleStorage? = { _ in nil }
+
+    /// A short note from the optional Google sign-in for this account ("Waiting for Google sign-in…",
+    /// "Storage not shown · sign in again from the ••• menu"), or nil. Asked only when the Drive cache has no
+    /// figures, like `signInStorage`. Same rules: collector's queue, never blocks.
+    nonisolated(unsafe) static var signInNote: (_ email: String) -> String? = { _ in nil }
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         cloudStorage = home.appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
@@ -41,10 +73,27 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains { !$0.isTerminated }
 
         var evidence = ProviderEvidence(present: true, clientRunning: running)
+        let paused = FileManager.default.fileExists(atPath: driveFS.appending(path: "user-paused").path)
         for config in configs {
             var account = AccountEvidence(config: config, name: config.fallbackName)
             account.running = running
-            if running {
+            // The Drive cache wins; the optional sign-in is asked only when the cache has nothing, so with the
+            // cache present it makes no request at all.
+            let cached = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }
+            let storage = cached ?? Self.signInStorage(config.fallbackName)
+            if let storage {
+                account.notes.append(Self.storageNote(storage))
+                account.notesHelp = Self.storageHelp(storage)
+                account.notesNeedAttention = storage.isFull || storage.isAlmostFull
+                account.storageFull = storage.isFull
+            }
+            if cached == nil, let note = Self.signInNote(config.fallbackName) {
+                account.notes.append(note)
+            }
+            if running && paused {
+                // Google Drive's own pause, for every account. Waiting files still show as "Paused, N waiting".
+                account.report = Self.pausedReport(now: now)
+            } else if running {
                 // Drive's queue, when readable, decides; if a future Drive changes it, the per-file flags still
                 // stand and the source line says only that Drive is running.
                 let queued = dataFolders[config.key].flatMap { queueLength(config.key, folder: $0) }
@@ -58,6 +107,9 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
             }
             evidence.accounts.append(account)
         }
+        // Storage is optional information: it may mark the heading, never a row's state, the lid or the icon.
+        let full = evidence.accounts.filter(\.storageFull).count
+        if full > 0 { evidence.trouble = full == 1 ? "Storage full" : "\(full) accounts full" }
         return evidence
     }
 
@@ -68,6 +120,37 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         queued == 0
             ? ProviderReport(label: "Google Drive's queue empty", written: now, state: .ok, headline: "Up to date", timed: false)
             : ProviderReport(label: "Google Drive's queue", written: now, state: .syncing, headline: "Syncing changes", timed: false)
+    }
+
+    static func pausedReport(now: Date) -> ProviderReport {
+        ProviderReport(label: "Google Drive is paused", written: now, state: .paused, headline: "Paused", timed: false)
+    }
+
+    /// "214 GB free of 400 GB", like iCloud's line; "Almost full · 9 GB free of 400 GB"; "Storage full · shared
+    /// with Gmail and Photos"; "186 GB used" on an unlimited plan.
+    static func storageNote(_ storage: GoogleStorage) -> String {
+        guard let limit = storage.limit, limit > 0, let free = storage.free else { return "\(size(storage.used)) used" }
+        if storage.isFull { return "Storage full · shared with Gmail and Photos" }
+        let line = "\(size(free)) free of \(size(limit))"
+        return storage.isAlmostFull ? "Almost full · \(line)" : line
+    }
+
+    /// The hover text: what the figure covers, and how much of it is Drive's.
+    static func storageHelp(_ storage: GoogleStorage) -> String {
+        var parts = ["Google storage, shared by Drive, Gmail and Photos"]
+        if let limit = storage.limit { parts.append("\(size(storage.used)) of \(size(limit)) used") }
+        if let drive = storage.usedInDrive { parts.append("your files use \(size(drive))") }
+        parts.append(storage.source == .driveCache ? "from Google Drive on this Mac" : "from your Google sign-in, \(RelTime.string(storage.asOf))")
+        return parts.joined(separator: " · ")
+    }
+
+    /// Binary units, as Google labels them ("400 GB" is 400 × 2³⁰ bytes): one decimal under 10, else whole.
+    static func size(_ bytes: Int64) -> String {
+        let units = ["bytes", "KB", "MB", "GB", "TB", "PB"]
+        var value = Double(bytes), unit = 0
+        while value >= 1024, unit < units.count - 1 { value /= 1024; unit += 1 }
+        if unit == 0 { return "\(bytes) bytes" }
+        return value < 10 ? String(format: "%.1f %@", value, units[unit]) : "\(Int(value.rounded())) \(units[unit])"
     }
 
     /// No readable queue (a Drive version that changed its database): only "Drive is running" stands behind
@@ -100,6 +183,53 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         let count = Self.countOperations(db)
         queueCache[key] = (stamp, count)
         return count
+    }
+
+    /// The account's storage from Drive's own cache, re-read only when the database changes.
+    private func cachedStorage(_ key: String, folder: URL) -> GoogleStorage? {
+        let db = folder.appending(path: "metadata_sqlite_db").path
+        let stamp = [db, db + "-wal"].compactMap { (try? FileManager.default.attributesOfItem(atPath: $0))?[.modificationDate] as? Date }.max()
+        if let cached = storageCache[key], cached.stamp == stamp { return cached.value }
+        let value = Self.readProperty("driveway_account", db: db).flatMap { Self.parseStorage($0, asOf: Date()) }
+        storageCache[key] = (stamp, value)
+        return value
+    }
+
+    /// The quota inside Drive's cached account record (`driveway_account`): message 2 → 3 → 1 holds
+    /// 1 = limit, 3 = used by all services, 8 = remaining, 9 = used by the user. Undocumented, so the figures
+    /// count only if limit − used = remaining (true on this Mac to the byte); any other shape gives nil and
+    /// the row simply shows no storage.
+    static func parseStorage(_ blob: Data, asOf: Date) -> GoogleStorage? {
+        guard let account = Protobuf.message(blob, field: 2),
+              let quotaWrapper = Protobuf.message(account, field: 3),
+              let quota = Protobuf.message(quotaWrapper, field: 1) else { return nil }
+        let fields = Protobuf.varints(quota)
+        guard let used = fields[3].map(Int64.init) else { return nil }
+        let limit = fields[1].map(Int64.init)
+        if let limit, let remaining = fields[8].map(Int64.init) {
+            guard limit - used == remaining else { return nil }
+        } else if limit != nil {
+            return nil      // a limit without the remaining figure to check it against
+        }
+        return GoogleStorage(limit: limit, used: used, usedInDrive: fields[9].map(Int64.init), source: .driveCache, asOf: asOf)
+    }
+
+    static func readProperty(_ name: String, db path: String) -> Data? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        var db: OpaquePointer?
+        let uri = URL(fileURLWithPath: path).absoluteString + "?mode=ro"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 250)
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT value FROM properties WHERE property = ?", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+        guard sqlite3_step(stmt) == SQLITE_ROW, let bytes = sqlite3_column_blob(stmt, 0) else { return nil }
+        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
     }
 
     static func countOperations(_ path: String) -> Int? {
@@ -155,5 +285,56 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
             storageURL: web("settings/storage"),
             keepsOwnHistory: false
         )
+    }
+}
+
+/// Just enough protobuf reading for Drive's cached account record: varints and nested messages.
+enum Protobuf {
+    /// The first length-delimited field `field` in `data`, or nil.
+    static func message(_ data: Data, field: Int) -> Data? {
+        var found: Data?
+        walk(data) { f, wire, value, bytes in
+            if f == field, wire == 2, found == nil { found = bytes }
+            _ = value
+        }
+        return found
+    }
+
+    /// Every varint field in `data` (top level only), last value wins.
+    static func varints(_ data: Data) -> [Int: UInt64] {
+        var result: [Int: UInt64] = [:]
+        walk(data) { f, wire, value, _ in if wire == 0 { result[f] = value } }
+        return result
+    }
+
+    private static func walk(_ data: Data, _ visit: (Int, Int, UInt64, Data?) -> Void) {
+        let b = [UInt8](data)
+        var i = 0
+        func varint() -> UInt64? {
+            var v: UInt64 = 0, shift: UInt64 = 0
+            while i < b.count, shift < 64 {
+                let x = b[i]; i += 1
+                v |= UInt64(x & 0x7f) << shift
+                if x & 0x80 == 0 { return v }
+                shift += 7
+            }
+            return nil
+        }
+        while i < b.count {
+            guard let key = varint() else { return }
+            let field = Int(key >> 3), wire = Int(key & 7)
+            switch wire {
+            case 0:
+                guard let v = varint() else { return }
+                visit(field, 0, v, nil)
+            case 2:
+                guard let n = varint(), n <= UInt64(b.count - i) else { return }
+                visit(field, 2, 0, Data(b[i..<i + Int(n)]))
+                i += Int(n)
+            case 1: i += 8
+            case 5: i += 4
+            default: return
+            }
+        }
     }
 }

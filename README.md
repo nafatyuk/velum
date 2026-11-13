@@ -26,14 +26,16 @@ keeps working.
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.
 - **Google Drive too.** One row per signed-in Google account (shown by email), with the same live upload
-  tracking. "Up to date" also needs Google Drive's own queue of pending work to be empty.
+  tracking. "Up to date" also needs Google Drive's own queue of pending work to be empty, a paused Google
+  Drive says "Paused", and each account shows its free Google storage ("214 GB free of 400 GB"), read
+  from Google Drive's own copy on your Mac, with no sign-in.
 - **Every account at a glance.** Live status for each account: files uploading, waiting to upload or
   failing (with the reason), downloads in progress, and when it last did something. Each status says
   where it came from, and Velum never says "Up to date" without evidence.
 - **Recent activity, merged.** Uploads, downloads, deletes and moves from all accounts in one list.
   Click a file to show it in Finder.
-- **Quick actions.** Open an account's folder or its web view, its recycle bin (work and school
-  accounts), storage page, restart or quit OneDrive, open at login.
+- **Quick actions.** Open an account's folder or its web view, its recycle bin or trash (iCloud: Recover
+  Deleted Files), storage page; start, restart or quit OneDrive and Google Drive; open at login.
 
 Velum needs no special permissions, never modifies any sync app's files or settings, and makes no
 network connections (unless you turn on the [optional Google sign-in](#optional-google-sign-in-for-storage)). The only things it does to OneDrive are the Restart and Quit OneDrive commands you
@@ -84,6 +86,9 @@ Each account's status line names its source:
   now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy.
 - **OneDrive report, 9:35 AM.** Account-wide states such as Paused or Sync issue come only from that hourly
   report, so they can be up to an hour old.
+- **Google storage** comes from Google Drive's own record of your account on this Mac. Velum shows it
+  only when its figures add up (limit − used = remaining), and storage never changes an account's status
+  or the lid line; a full account gets one alert and "Storage full" at its heading.
 - **Nothing pending · Google Drive's queue empty.** For Google Drive, "Up to date" means nothing is moving
   or waiting right now and Google Drive's own list of pending work is empty.
 - **Nothing pending · iCloud status, 9:35 AM.** For iCloud Drive, "Up to date" means nothing is moving
@@ -108,6 +113,8 @@ keystrokes.
 | `/usr/bin/brctl status` and `brctl quota` | iCloud Drive's account-wide state and free storage |
 | FSEvents and per-file sync flags for each `~/Library/CloudStorage/GoogleDrive-<email>` folder | Google Drive's live uploads, waiting files, upload errors |
 | The `operations` table in `~/Library/Application Support/Google/DriveFS/<account>/metadata_sqlite_db` | whether Google Drive still has work queued |
+| The `driveway_account` record in the same database | the account's Google storage |
+| `~/Library/Application Support/Google/DriveFS/user-paused` | whether Google Drive is paused |
 
 To see what Velum sees without opening it:
 
@@ -209,7 +216,7 @@ an Apple-issued certificate uses system notifications automatically.
   Velum's ••• → Show OneDrive's Own Icons… to switch them back on when you need it.
 - **Google Drive's mirror mode isn't covered.** Velum watches Google Drive's streamed folders (the
   default). A My Drive set to "Mirror files" lives outside them. Velum doesn't use the Google Drive API,
-  so it doesn't show Google storage; Manage Storage opens it on the web.
+  but it reads the storage Google Drive keeps on your Mac.
 - **iCloud's and Google Drive's Recent lists are partial.** They show only uploads Velum saw finish
   while it was running, not downloads or changes from your other devices.
 - **Personal accounts have no recycle bin link**, because OneDrive offers no stable address for it.

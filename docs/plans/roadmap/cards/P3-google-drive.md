@@ -125,3 +125,28 @@ Built and live-checked overnight, November 12, 2026. The owner asked for it at b
   - give account identities a generation, so a reused OneDrive slot can't inherit another account's history;
   - move vendor filename filters (`.fetch`) into the adapters;
   - reconcile FSEvents gaps instead of letting them expire after 15 minutes.
+
+### Added November 12, morning (owner's requests)
+
+The owner asked for three cheap fixes and for Google storage, the latter "as a distinctly optional thing".
+
+- **Pause.** Pausing Google Drive creates an empty `DriveFS/user-paused` file at the top of DriveFS, so it covers every account. This was found by diffing Drive's settings and databases before and after the owner paused it. The same diff found no change in the process arguments, the prefs or the databases.
+  - Velum now shows "Paused", or "Paused, N waiting".
+  - Start, Restart and Quit in the ••• menu now exist for every service with an app (`ProviderID.clientBundleID`).
+  - Quitting from Velum suppresses the "stopped" alert for that service (`Notifier.userStopped[provider]`).
+- **Storage, no sign-in.** The same diff showed that Drive caches the account record, including its quota, in `metadata_sqlite_db` → `properties` → `driveway_account`. It is a protobuf; message 2 → 3 → 1 holds:
+  - 1 = limit;
+  - 3 = used by all services;
+  - 8 = remaining;
+  - 9 = used by the user.
+
+  On this Mac it read 400 GiB, 185.97 GiB used and 214.03 GiB remaining, and limit − used = remaining to the byte. Velum shows the figures only when that arithmetic holds, so a changed shape shows nothing rather than a wrong number. Codex and Fable were asked about the display; Fable decided:
+  - "214 GB free of 400 GB" in binary units, as Google labels them; the hover text says it's shared by Drive, Gmail and Photos, and how much your files use.
+  - "Almost full" (orange) past 90% used and under 10 GB free.
+  - "Storage full" under 100 MB free: an orange note, "Storage full" or "N accounts full" at the heading, and one alert per crossing.
+  - Storage never changes a row's state, the lid line or the icon.
+- **The optional Google sign-in for storage** is being built in a separate session, on its own branch (`google-storage`), as a fallback for accounts whose cache has no figures. It plugs into `GoogleDriveProvider.signInStorage`. Its wording, decided by Fable:
+  - "Show Storage…", then "Stop Showing Storage", and "Sign In Again…" after expiry;
+  - an alert before opening the browser;
+  - hidden in builds without the client configuration.
+- **iCloud "Recently Deleted".** A deep link doesn't exist: `icloud.com/iclouddrive/recently-deleted` opens "Item Unavailable". The row gets "Recover Deleted Files…", which opens Apple's documented `icloud.com/recovery`. Each service now names this item itself (`ProviderID.deletedFilesLabel`).

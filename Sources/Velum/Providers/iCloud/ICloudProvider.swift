@@ -84,6 +84,9 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
             places: places,
             fallbackName: "iCloud Drive",
             webURL: URL(string: "https://www.icloud.com/iclouddrive/")!,
+            // Apple's documented page for getting deleted iCloud Drive files back (a deep link to the web
+            // app's Recently Deleted sidebar doesn't exist: it opens "Item Unavailable").
+            recycleBinURL: URL(string: "https://www.icloud.com/recovery"),
             storageURL: URL(string: "x-apple.systempreferences:com.apple.systempreferences.AppleIDSettings"),
             keepsOwnHistory: false
         )
