@@ -59,6 +59,16 @@ import Testing
         #expect(report?.isOld(now: Fixture.now.addingTimeInterval(30 * 60)) == true)
     }
 
+    @Test func justAfterLaunchItSaysWhatThePassWasAndWhenTheNextIsDue() {
+        var pass = Diagnostics(written: Fixture.now.addingTimeInterval(-20 * 60))
+        pass.isVerification = true
+        let reason = OneDriveProvider.noReportReason(diag: pass, since: Fixture.now.addingTimeInterval(-60), now: Fixture.now)
+        #expect(reason.contains("was a check of its folders, with no status in it."))
+        #expect(reason.contains("Its next report is due by"))
+        let late = OneDriveProvider.noReportReason(diag: pass, since: Fixture.now, now: Fixture.now.addingTimeInterval(2 * 3600))
+        #expect(late.hasSuffix("Its next report is overdue."))
+    }
+
     @Test func aVerificationPassIsNoChangeAndNoAlert() throws {
         let home = try CompatFixture.home()
         defer { try? FileManager.default.removeItem(at: home) }

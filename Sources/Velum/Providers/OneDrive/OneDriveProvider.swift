@@ -122,6 +122,12 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
 
     /// No usable report: none written yet, none since Velum started looking, or one with no status line.
     static func noReportReason(diag: Diagnostics?, since: Date, now: Date) -> String {
+        if let diag, diag.isVerification {
+            // A verification scan in place of the hourly report (found live, November 13): normal, not a failure.
+            let due = diag.written.addingTimeInterval(reportEvery)
+            let next = now > due ? "Its next report is overdue." : "Its next report is due by \(RelTime.clock(due))."
+            return "OneDrive’s report at \(RelTime.clock(diag.written)) was a check of its folders, with no status in it. \(next)"
+        }
         if let diag {
             return "OneDrive’s report at \(RelTime.clock(diag.written)) had no status Velum can read. Velum keeps looking."
         }
