@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velum</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="style.css">
+</head>
+<body><main>
+<h1>Velum</h1>
+<p class="muted">A macOS menu bar app, in development by one person.</p>
+<p><em>A velum is a thin veil of cloud that stretches across several separate clouds and joins them.</em></p>
+
+<p>Velum shows every cloud storage account on a Mac (OneDrive, iCloud Drive and Google Drive) under one
+menu bar icon: whether each account is in sync, what's still uploading, and recent activity. It reads
+what the sync apps already keep on the Mac and makes no network connections of its own.</p>
+
+<h2>What it does with Google</h2>
+<p>One optional feature, off until the user turns it on for an account, signs in to Google to show that
+account's storage (how much is used, of how much). It asks only for the Google Drive scope
+<code>drive.file</code>, which covers files an app creates or the user opens with it. Velum creates and
+opens none, so it can't see the user's files. It calls Drive's <code>about</code> endpoint for the
+account's email address and storage quota, and nothing else.</p>
+
+<p><a href="privacy.html">Privacy policy</a></p>
+
+<footer>Velum is an independent project and is not affiliated with Google, Microsoft or Apple.</footer>
+</main></body>
+</html>

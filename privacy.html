@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velum Privacy</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="style.css">
+</head>
+<body><main>
+<h1>Privacy policy</h1>
+<p class="muted">Effective November 12, 2026</p>
+
+<p>Velum runs entirely on the user's own Mac. It has no server, no account system and no analytics.
+This policy covers its one connection to Google, which is optional and off by default.</p>
+
+<h2>Data accessed</h2>
+<p>When the user turns on Google sign-in for an account, Velum asks Google for the
+<code>drive.file</code> scope and uses it only to call the Google Drive API's <code>about</code> endpoint,
+which returns the account's email address and storage quota (the plan's limit, the storage used, and the
+part used by Drive). Velum creates and opens no Drive files, so the scope gives it access to none.</p>
+
+<h2>How data is used</h2>
+<p>The email address is used only to check that the sign-in belongs to the account the user chose. The
+storage figures are shown in Velum's menu bar panel on the same Mac, refreshed about every 30 minutes
+while the feature is on.</p>
+
+<h2>Storage</h2>
+<p>Google's refresh token is kept in the macOS Keychain on the user's Mac. The storage figures are kept in
+memory only. Nothing is sent to the developer or to any service other than Google's own sign-in and
+Drive API.</p>
+
+<h2>Sharing</h2>
+<p>Data is not sold, not used for advertising, not used to train AI models, and not shared with anyone.</p>
+
+<h2>Google API Services User Data Policy</h2>
+<p>Velum's use and transfer of information received from Google APIs adheres to the
+<a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data
+Policy</a>, including the Limited Use requirements.</p>
+
+<h2>Revoking access</h2>
+<p>Turning the feature off in Velum revokes Velum's access at Google and deletes the token from the Mac.
+Access can also be removed at any time at
+<a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+<h2>Contact</h2>
+<p>Questions can be raised through this site's
+<a href="https://github.com/nafatyuk/velum-site/issues">GitHub issues</a>.</p>
+
+<footer><a href="index.html">Velum</a></footer>
+</main></body>
+</html>
