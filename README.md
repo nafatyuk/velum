@@ -274,6 +274,10 @@ and a non-activating panel on `NSGlassEffectView`) is adapted from
 banner follows the idea of Crisp's on-screen banner. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). To add a sync service, read [the adapter guide](docs/adapters.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
