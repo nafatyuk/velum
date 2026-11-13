@@ -31,7 +31,10 @@ enum CompatFixture {
     static func oneDriveLog(_ home: URL, key: String = "Personal", _ text: String) throws {
         let dir = home.appending(path: "Library/Logs/OneDrive/\(key)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try text.write(to: dir.appending(path: "SyncDiagnostics.log"), atomically: true, encoding: .utf8)
+        let file = dir.appending(path: "SyncDiagnostics.log")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        // Dated at the fixtures' clock, so A4's age check sees a fresh report, not one months old.
+        try FileManager.default.setAttributes([.modificationDate: Fixture.now], ofItemAtPath: file.path)
     }
 
     static func oneDrive(_ home: URL, version: String = "26.212.1029") -> OneDriveCompatibility {
@@ -153,7 +156,7 @@ enum CompatFixture {
 
         let status = Fixture.status(e.accounts[0])
         #expect(status.state == .unknown)
-        #expect(status.headline == "Status unknown")
+        #expect(status.headline == "Can’t tell")
         #expect(status.compatibilityNote == "OneDrive reported a status Velum doesn’t know · uploads are still tracked")
         let report = try #require(e.compatibility)
         #expect(report.counted.first?.detail == "unknown code 4096")
@@ -174,7 +177,7 @@ enum CompatFixture {
 
         let status = Fixture.status(e.accounts[0])
         #expect(status.state == .unknown)
-        #expect(status.headline == "No status yet")
+        #expect(status.headline == "Can’t tell yet")
         #expect(status.compatibilityNote == "Can’t read OneDrive 27.0’s status report · uploads are still tracked")
         #expect(e.compatibility?.alerting.map(\.detail) == ["no SyncProgressState line"])
     }
@@ -370,7 +373,7 @@ enum CompatFixture {
 
         let status = Fixture.status(e.accounts[0])
         #expect(status.state == .unknown)
-        #expect(status.headline == "No status yet")
+        #expect(status.headline == "Can’t tell yet")
         #expect(status.compatibilityNote == "Can’t read Google Drive’s queue right now · checking again")
         let report = try #require(e.compatibility)
         #expect(report.alerting.isEmpty)        // a hiccup, not a change

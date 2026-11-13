@@ -134,7 +134,7 @@ import Testing
         let e = Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root))
         let s = Fixture.status(e)
         #expect(s.state == .unknown)
-        #expect(s.headline == "No status yet")
+        #expect(s.headline == "Can’t tell yet")
         #expect(!s.workPending)
         var uploads = UploadSummary()
         uploads.waiting = 2
