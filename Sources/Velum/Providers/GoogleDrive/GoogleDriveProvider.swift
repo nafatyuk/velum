@@ -86,6 +86,7 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
 
         var evidence = ProviderEvidence(present: true, clientRunning: running)
         let paused = FileManager.default.fileExists(atPath: driveFS.appending(path: "user-paused").path)
+        evidence.paused = paused   // T1
         for config in configs {
             var account = AccountEvidence(config: config, name: config.fallbackName)
             account.running = running
@@ -98,6 +99,7 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
                 account.notesHelp = Self.storageHelp(storage)
                 account.notesNeedAttention = storage.isFull || storage.isAlmostFull
                 account.storageFull = storage.isFull
+                account.storage = StorageFigures(storage)   // T1
             }
             if let signInNote {
                 account.notes.append(signInNote)

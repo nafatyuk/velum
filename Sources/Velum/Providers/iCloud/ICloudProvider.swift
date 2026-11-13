@@ -66,6 +66,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         if config.watchRoots.count > 1 { account.notes.append("Desktop & Documents included") }
         var evidence = ProviderEvidence(present: true, clientRunning: nil)
         if let quota {
+            account.storage = StorageFigures(iCloudFree: quota, asOf: lastCheck)   // T1
             if quota <= 0 {
                 account.notes.append("iCloud storage is full")
                 account.notesNeedAttention = true    // orange, as the legend says (A4)

@@ -39,6 +39,8 @@ keeps working.
   Click a file to show it in Finder.
 - **Quick actions.** Open an account's folder or its web view, its recycle bin or trash (iCloud: Recover
   Deleted Files), storage page; start, restart or quit OneDrive and Google Drive; open at login.
+- **`velumctl` for scripts.** `velumctl lid`, `status` and `pending` answer from Terminal, as text or
+  `--json`, and exit 0 only when every change is in the cloud. See [docs/velumctl.md](docs/velumctl.md).
 
 Velum needs no special permissions and never modifies any sync app's files or settings. It makes no
 network connections, unless you turn on [Show Storage](#optional-google-sign-in-for-storage) for a Google
@@ -67,6 +69,12 @@ launches it. Signing uses a self-signed identity that `Scripts/sign.sh` creates 
 keychain file under `~/Library/Application Support/Velum/Signing/` (not your login keychain). Because
 that signature stays the same across builds, macOS keeps Velum's Accessibility permission (if you
 allow it) when you rebuild.
+
+To use `velumctl` from Terminal, link it into your PATH:
+
+```sh
+sudo mkdir -p /usr/local/bin && sudo ln -sf ~/Applications/Velum.app/Contents/MacOS/velumctl /usr/local/bin/velumctl
+```
 
 ## First run
 
@@ -262,7 +270,8 @@ off by default.
 1. Click Velum's cloud → ••• → Quit Velum, then delete `~/Applications/Velum.app`.
 2. Remove Velum from System Settings → General → Login Items and from Privacy & Security →
    Accessibility.
-3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain) and run
+3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain and the status
+   file `velumctl` reads), remove `/usr/local/bin/velumctl` if you linked it, and run
    `defaults delete io.github.nafatyuk.velum`.
 4. Turn OneDrive back on in System Settings → Menu Bar → Allow in the Menu Bar.
 

@@ -11,6 +11,7 @@ swift build -c release
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp .build/release/Velum "$BUNDLE/Contents/MacOS/Velum"
+cp .build/release/velumctl "$BUNDLE/Contents/MacOS/velumctl"   # T1: link it into your PATH (README)
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"; fi
 # The optional Google sign-in's OAuth client, kept out of git. Without it the sign-in isn't offered (see README).
