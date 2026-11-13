@@ -9,3 +9,5 @@ build/
 # It stays local until an original icon replaces it.
 Resources/AppIcon.icns
 Scripts/make_icon.swift
+# The optional Google sign-in's OAuth client (ID and secret). Each build makes its own; see the README.
+Resources/GoogleOAuthClient.plist

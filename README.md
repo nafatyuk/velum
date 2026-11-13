@@ -36,7 +36,7 @@ keeps working.
   accounts), storage page, restart or quit OneDrive, open at login.
 
 Velum needs no special permissions, never modifies any sync app's files or settings, and makes no
-network connections. The only things it does to OneDrive are the Restart and Quit OneDrive commands you
+network connections (unless you turn on the [optional Google sign-in](#optional-google-sign-in-for-storage)). The only things it does to OneDrive are the Restart and Quit OneDrive commands you
 click, and Start for a sync app that isn't running; everything else it only reads.
 
 ## Requirements
@@ -114,6 +114,66 @@ To see what Velum sees without opening it:
 ```sh
 .build/release/Velum --dump                 # as it runs now
 .build/release/Velum --dump --no-icon-text  # as if Accessibility were off
+```
+
+## Optional: Google sign-in for storage
+
+Velum shows a Google account's storage from Google Drive for desktop's own local cache, with no sign-in.
+If that cache ever has no figures for an account (a future Google Drive that stops keeping them), you can
+let Velum ask Google instead: the Google account row's ••• menu → **Show Storage with Google Sign-In…**.
+It's off by default, per account, and Velum works fully without it.
+
+- **What it adds:** the account's storage (used, of how much, and how much is Drive), refreshed about
+  every 30 minutes and when you open the panel. Velum uses these figures only when Google Drive's cache
+  has none.
+- **What it asks Google for:** the `drive.file` permission only. It covers files an app creates or you
+  open with it; Velum creates none, so it can't see any of your files. Google's consent page says so. Under
+  it, Drive's `about` call still answers with the account's email and storage quota, which is all Velum
+  reads. If the email isn't the row's account, Velum says so and shows no figures.
+- **Velum's one network connection,** only while it's on: your browser opens Google's consent page, Google
+  redirects back to a temporary port on `127.0.0.1`, and Velum talks to `oauth2.googleapis.com` (tokens)
+  and `www.googleapis.com` (storage). With it off, Velum makes no connections and reads nothing from the
+  Keychain.
+- **What it keeps:** the refresh token, in your login Keychain as "Velum Google Sign-In" (one item per
+  account email), and the on/off switch in Velum's preferences.
+- **Turning it off** (••• → Turn Off Google Sign-In) revokes the grant at Google, deletes the Keychain item
+  and clears the switch. If the sign-in expires or you remove Velum's access in your Google Account, the
+  row quietly asks you to sign in again; Velum never pops anything up on its own.
+- **Privacy policy:** <https://nafatyuk.github.io/velum/privacy.html> (served from this repo's `gh-pages`
+  branch, which Google's consent screen links to).
+
+### Building it yourself: your own Google OAuth client
+
+A Velum built from source doesn't offer the sign-in until it has an OAuth client, which stays out of git
+(like rclone, each builder makes their own; it's free):
+
+1. In [Google Cloud Console](https://console.cloud.google.com/projectcreate), create a project (any name).
+2. **APIs & Services → Library → Google Drive API → Enable.**
+3. **Google Auth Platform → Get started:** app name (e.g. "Velum"), your email as support and contact
+   email, audience **External**, then agree to Google's API Services User Data Policy.
+4. **Data Access → Add or remove scopes:** add `https://www.googleapis.com/auth/drive.file`, then Save.
+5. **Branding:** Google won't publish the app without a public home page and privacy policy. Add their
+   links and their domain under Authorized domains (a GitHub Pages site works, as Velum's does). Then
+   **Audience → Publish app → Confirm**, so the sign-in doesn't expire. With only `drive.file` (a
+   non-sensitive scope), no logo and few domains, Google asks for no verification. If you'd rather stay
+   in Testing, skip the pages and add yourself as a test user; Google then ends the sign-in every 7 days.
+6. **Clients → Create client:** application type **Desktop app**, any name. Copy its client ID and secret.
+7. Put them in `Resources/GoogleOAuthClient.plist` (ignored by git), then build:
+
+   ```sh
+   plutil -create xml1 Resources/GoogleOAuthClient.plist
+   plutil -insert ClientID -string 'YOUR-ID.apps.googleusercontent.com' Resources/GoogleOAuthClient.plist
+   plutil -insert ClientSecret -string 'YOUR-SECRET' Resources/GoogleOAuthClient.plist
+   ./build.sh --install
+   ```
+
+Google treats a desktop app's client secret as not really secret (anyone can read it from the app), which
+is why the flow also uses PKCE. To test without replacing your installed Velum:
+
+```sh
+build/Velum.app/Contents/MacOS/Velum --google-sign-in you@gmail.com   # sign in, print the storage
+build/Velum.app/Contents/MacOS/Velum --google-storage you@gmail.com   # fetch again with the saved sign-in
+build/Velum.app/Contents/MacOS/Velum --google-sign-out you@gmail.com  # revoke and forget
 ```
 
 ## Alerts

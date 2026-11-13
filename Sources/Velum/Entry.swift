@@ -6,6 +6,7 @@ struct VelumApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        GoogleSignInDebug.runIfAsked()
         if CommandLine.arguments.contains("--dump") {
             DebugDump.run()
             exit(0)

@@ -25,6 +25,7 @@ struct PanelActions {
     var setNotifications: @MainActor (Bool) -> Void
     var setLoginItem: @MainActor (Bool) -> Void
     var quitApp: @MainActor () -> Void
+    var setGoogleSignIn: @MainActor (_ email: String, _ on: Bool) -> Void = { GoogleSignInStorage.set($0, on: $1) }
 }
 
 struct PanelView: View {
@@ -310,6 +311,7 @@ struct AccountRow: View {
                     if let url = account.config.storageURL {
                         Button(account.provider == .iCloud ? "iCloud Settings…" : "Manage Storage") { actions.openURL(url) }
                     }
+                    GoogleSignInMenuItems(config: account.config, set: actions.setGoogleSignIn)
                     Divider()
                     Button("Copy Folder Path") { actions.copyPath(account.config) }
                 } label: {

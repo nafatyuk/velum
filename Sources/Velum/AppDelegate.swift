@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         LoginItem.enableOnFirstLaunch()
         store.loginItemEnabled = LoginItem.isEnabled
+        GoogleSignInStorage.install()   // the optional Google sign-in for storage; off until turned on per account
     }
 
     // MARK: Status item

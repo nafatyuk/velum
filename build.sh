@@ -13,6 +13,8 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp .build/release/Velum "$BUNDLE/Contents/MacOS/Velum"
 cp Resources/Info.plist "$BUNDLE/Contents/Info.plist"
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"; fi
+# The optional Google sign-in's OAuth client, kept out of git. Without it the sign-in isn't offered (see README).
+if [[ -f Resources/GoogleOAuthClient.plist ]]; then cp Resources/GoogleOAuthClient.plist "$BUNDLE/Contents/Resources/"; fi
 # A stable local identity keeps macOS's Accessibility permission across rebuilds (see Scripts/sign.sh).
 Scripts/sign.sh "$BUNDLE"
 echo "Built $BUNDLE"
