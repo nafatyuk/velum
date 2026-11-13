@@ -95,7 +95,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 current[account.id] = Problem(kind: .failed,
                                               title: "\(account.name): \(Self.files(account.uploadsFailed)) can’t upload",
                                               body: account.firstFailure ?? "")
-            } else if account.state == .error {
+            } else if account.state == .error, !account.isOld {
                 current[account.id] = Problem(kind: .issue, title: "\(account.name): \(account.headline)",
                                               body: "\(account.provider.name) reports a sync problem.")
             } else if account.uploadsPending > 0, let since = account.oldestWaiting,
@@ -129,7 +129,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             }
         }
 
-        for (key, episode) in episodes where current[key] == nil {
+        // An old problem report (A4) is neither news nor resolved: its episode waits for a fresh report.
+        let held = Set(snapshot.accounts.filter { $0.isOld && $0.state == .error }.map(\.id))
+        for (key, episode) in episodes where current[key] == nil && !held.contains(key) {
             episodes[key] = nil
             guard episode.notified, enabled else { continue }
             // A service or account that was removed (uninstalled, signed out) isn't "resolved": it's gone.

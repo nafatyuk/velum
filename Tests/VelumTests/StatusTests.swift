@@ -88,7 +88,7 @@ import Testing
     @Test func noEvidenceIsNeverUpToDate() {
         let s = Fixture.status(Fixture.evidence(personal))
         #expect(s.state == .unknown)
-        #expect(s.headline == "No status yet")
+        #expect(s.headline == "Can’t tell yet")
     }
 
     @Test func iCloudNotesGoOnTheirOwnLine() {
@@ -109,7 +109,7 @@ import Testing
     }
 
     @Test(arguments: [(65536, SyncState.paused, "Paused"), (8194, .offline, "Not syncing"), (1854, .error, "Sync issue"),
-                      (0, .ok, "Up to date"), (16777216, .ok, "Up to date"), (42, .unknown, "Status unknown")])
+                      (0, .ok, "Up to date"), (16777216, .ok, "Up to date"), (42, .unknown, "Can’t tell")])
     func codes(code: Int, state: SyncState, headline: String) {
         let report = OneDriveProvider.report(from: diag(code))
         #expect(report?.state == state)

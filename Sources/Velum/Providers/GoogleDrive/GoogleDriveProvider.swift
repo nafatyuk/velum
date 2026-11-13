@@ -128,11 +128,10 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     }
 
     /// Drive's own queue as an account-wide status: empty means Drive has nothing left to do. Only reached
-    /// when Velum sees nothing waiting or moving itself; with no queue to read, there is no report and the
-    /// row says "No status yet", never "Up to date".
+    /// when Velum sees nothing waiting or moving itself; with no queue to read, see `runningReport`.
     static func report(queued: Int, now: Date) -> ProviderReport {
         queued == 0
-            ? ProviderReport(label: "Google Drive's queue empty", written: now, state: .ok, headline: "Up to date", timed: false)
+            ? ProviderReport(label: "Google Drive's queue", written: now, state: .ok, headline: "Up to date", timed: false)
             : ProviderReport(label: "Google Drive's queue", written: now, state: .syncing, headline: "Syncing changes", timed: false)
     }
 
@@ -167,10 +166,12 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
         return value < 10 ? String(format: "%.1f %@", value, units[unit]) : "\(Int(value.rounded())) \(units[unit])"
     }
 
-    /// No readable queue (a Drive version that changed its database): only "Drive is running" stands behind
-    /// the live per-file evidence.
+    /// No readable queue (a Drive version that changed its database): Velum knows only that Drive runs, which
+    /// is no evidence that it's caught up, so the row can't tell (A4; P3 had it green). Waiting, uploading and
+    /// failing files still show from macOS's per-file flags, which come first in the merge.
     static func runningReport(now: Date) -> ProviderReport {
-        ProviderReport(label: "Google Drive running", written: now, state: .ok, headline: "Up to date", timed: false)
+        ProviderReport(label: "Google Drive running", written: now, state: .unknown, headline: "Can’t tell", timed: false,
+                       reason: "Velum can’t read Google Drive’s queue on this version. Per-file status from macOS still works.")
     }
 
     /// Each account's DriveFS folder, found through the `my-drive` symlink it keeps to the account's My Drive.

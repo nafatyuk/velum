@@ -39,6 +39,18 @@ struct PanelView: View {
     private let bodyHeight = State(initialValue: CGFloat(0))
 
     var body: some View {
+        Group {
+            if store.showingLegend {
+                LegendView(store: store) { store.showingLegend = false }
+            } else {
+                main
+            }
+        }
+        .frame(width: 340)
+        .containerShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var main: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -53,8 +65,6 @@ struct PanelView: View {
                 banner
             }
         }
-        .frame(width: 340)
-        .containerShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     /// The accounts and Recent. They scroll, under a pinned header and lid line, only when the whole panel
@@ -90,7 +100,8 @@ struct PanelView: View {
                         ServiceHeading(provider: provider, accounts: accounts) { actions.startClient(provider.id) }
                         ForEach(accounts) { account in
                             AccountRow(account: account, spokenName: store.spokenName(account),
-                                       compact: store.compactRows && account.state == .ok && !account.notesNeedAttention,
+                                       compact: store.compactRows && account.state == .ok && !account.notesNeedAttention
+                                           && account.reason == nil,
                                        actions: actions)
                         }
                     }
@@ -114,8 +125,10 @@ struct PanelView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
+            CircleIconButton(systemName: "info.circle", help: "What the Status Means") { store.showingLegend = true }
             CircleIconButton(systemName: "arrow.clockwise", help: "Refresh") { store.refresh(force: true) }
             Menu {
+                Button("What the Status Means…") { store.showingLegend = true }
                 Toggle("Notify About Problems", isOn: Binding(
                     get: { store.notificationsEnabled },
                     set: { actions.setNotifications($0) }
@@ -243,8 +256,37 @@ struct AccountRow: View {
     private let hover = State(initialValue: false)
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            StatePlatter(state: account.state)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .center, spacing: 10) {
+                StatePlatter(state: account.state)
+                top
+                Spacer(minLength: 4)
+                buttons
+            }
+            // The reason, notes and source run under the buttons to the row's trailing edge: the column
+            // beside the buttons is too narrow for a reason (Codex). Indented to line up with the name.
+            if !compact { lines.padding(.leading, 38).padding(.trailing, 8) }
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 2)
+        .padding(.vertical, compact ? 3 : 6)
+        .background(HoverHighlight(isOn: hover.wrappedValue))
+        .contentShape(Rectangle())
+        .onHover { hover.wrappedValue = $0 }
+        .onTapGesture { actions.openFolder(account.config) }
+        .padding(.horizontal, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(spokenName), \(account.headline)")
+        .accessibilityValue(spokenDetails)
+    }
+
+    /// What VoiceOver reads after the name and headline: the reason, the notes and the source with its age,
+    /// with "min" and "hr" spelled out.
+    private var spokenDetails: String {
+        Reasons.spoken([account.reason ?? "", account.notes, account.detail].filter { !$0.isEmpty }.joined(separator: ". "))
+    }
+
+    @ViewBuilder private var top: some View {
             if compact {
                 // The headline goes when the name needs the room (the check mark already says it).
                 ViewThatFits(in: .horizontal) {
@@ -258,21 +300,15 @@ struct AccountRow: View {
                     name
                 }
             } else {
-                details
+                VStack(alignment: .leading, spacing: 1) {
+                    name
+                    Text(account.headline)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Spacer(minLength: 4)
-            buttons
-        }
-        .padding(.leading, 8)
-        .padding(.trailing, 2)
-        .padding(.vertical, compact ? 3 : 6)
-        .background(HoverHighlight(isOn: hover.wrappedValue))
-        .contentShape(Rectangle())
-        .onHover { hover.wrappedValue = $0 }
-        .onTapGesture { actions.openFolder(account.config) }
-        .padding(.horizontal, 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(spokenName), \(account.headline)")
     }
 
     /// Long names (Google accounts are email addresses) lose their middle, never their domain.
@@ -284,14 +320,16 @@ struct AccountRow: View {
             .help(account.name)
     }
 
-    private var details: some View {
+    /// Under the name and headline: why Velum can't tell (A4), the notes, then the source with its age.
+    private var lines: some View {
             VStack(alignment: .leading, spacing: 1) {
-                name
-                Text(account.headline)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let reason = account.reason {
+                    // Never cut: the end of a reason is what would make the status known again.
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !account.notes.isEmpty {
                     Text(account.notes)
                         .font(.caption)
@@ -440,11 +478,15 @@ struct ServiceHeading: View {
     let accounts: [AccountStatus]
     let start: () -> Void
 
-    /// "3 accounts", or "2 of 3 up to date" when some need attention.
+    /// "3 accounts", "2 of 3 up to date" when some need attention, "1 up to date · 1 can’t tell" when the
+    /// rest are only unknown (they don't need attention).
     private var count: String? {
         guard accounts.count > 1 else { return nil }
         let fine = accounts.filter { $0.state == .ok }.count
-        return fine == accounts.count ? "\(accounts.count) accounts" : "\(fine) of \(accounts.count) up to date"
+        let unsure = accounts.filter { $0.state == .unknown }.count
+        if fine == accounts.count { return "\(accounts.count) accounts" }
+        if fine + unsure == accounts.count { return "\(fine) up to date · \(unsure) can’t tell" }
+        return "\(fine) of \(accounts.count) up to date"
     }
 
     var body: some View {
@@ -518,7 +560,7 @@ struct LidRow: View {
 
     private var subtitle: String {
         switch verdict {
-        case .safe: "Every change on this Mac is in the cloud."
+        case .safe: "Every change in the watched cloud folders is in the cloud."
         case .pending(let n): "\(files(n)) still on the way up."
         case .busy(let name): "\(name) is still syncing changes."
         case .failing(let n): "\(files(n)) can’t upload. See the account below."

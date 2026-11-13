@@ -110,7 +110,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.isReleasedWhenClosed = false
         p.acceptsMouseMovedEvents = true
         p.collectionBehavior = [.stationary, .ignoresCycle, .canJoinAllSpaces, .fullScreenAuxiliary]
-        p.onCancel = { [weak self] in self?.closePanel() }
+        p.onCancel = { [weak self] in
+            // Esc leaves the legend first (A4), then closes the panel.
+            if AppModel.store.showingLegend { AppModel.store.showingLegend = false } else { self?.closePanel() }
+        }
 
         let glass = NSGlassEffectView()
         glass.cornerRadius = cornerRadius
@@ -127,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = AppModel.store
         store.refresh()
         store.loginItemEnabled = LoginItem.isEnabled
+        if !isPanelShown { store.showingLegend = false }   // the panel opens on the accounts, not the legend
 
         fitPanel(force: true)
         // Only the first open fades in, so the glass's one-time materialize plays under the fade.

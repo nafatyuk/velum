@@ -89,6 +89,9 @@ struct AccountEvidence {
     var notesNeedAttention = false
     /// Out of storage (optional information: an alert and the heading, never the row's state).
     var storageFull = false
+    /// Why the provider has no status for this account, and what would end it ("Checking iCloud now. This
+    /// takes about 15 seconds."). Shown under a row that ends up unknown with no report.
+    var unknownReason: String?
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,
@@ -100,8 +103,23 @@ struct ProviderReport: Equatable {
     var headline: String
     /// false for live evidence that has no time of its own ("Google Drive running").
     var timed = true
+    /// How often a fresh one comes (OneDrive's hourly report, Velum's 10-minute iCloud check). A timed report
+    /// older than this plus `grace` is old: never green, never safe, and the row says so.
+    var every: TimeInterval?
+    /// Why this report leaves the status unknown or old, and what would end it, in the provider's words.
+    var reason: String?
+
+    static let grace: TimeInterval = 15 * 60
 
     var source: String { timed ? "\(label), \(RelTime.clock(written))" : label }
+
+    func isOld(now: Date) -> Bool {
+        guard timed, let every else { return false }
+        return now.timeIntervalSince(written) > every + Self.grace
+    }
+
+    /// When the next one is due, for reason lines ("The next is due by 2:45 PM").
+    var nextDue: Date? { every.map { written.addingTimeInterval($0) } }
 }
 
 /// A place inside an account, used to say where a file is: "In the top of OneDrive-Personal",

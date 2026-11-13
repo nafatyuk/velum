@@ -83,20 +83,25 @@ Each account's status line names its source:
   File Provider where each one is: waiting, uploading, uploaded, or failed. OneDrive keeps those flags
   accurate to within a second or two. Downloads come from the transfer progress File Provider publishes
   for each folder. Changes made while Velum was quit are caught up when it starts (up to a day back).
-- **Nothing pending · OneDrive report, 9:35 AM.** "Up to date" means nothing is moving or waiting right
-  now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy.
-- **OneDrive report, 9:35 AM.** Account-wide states such as Paused or Sync issue come only from that hourly
-  report, so they can be up to an hour old.
+- **Nothing pending · OneDrive report 12 min ago.** "Up to date" means nothing is moving or waiting right
+  now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy. Once a report is over
+  75 minutes old it's old: the row turns grey and says "Can't tell · last report is old", never green.
+- **OneDrive report 2 hr ago.** Account-wide states such as Paused or Sync issue come only from that hourly
+  report, so they can be up to an hour old. An old one reads "Last reported: Paused · old" and raises no alert.
 - **Google storage** comes from Google Drive's own record of your account on this Mac. Velum shows it
   only when its figures add up (limit − used = remaining), and storage never changes an account's status
   or the lid line; a full account gets one alert and "Storage full" at its heading.
-- **Nothing pending · Google Drive's queue empty.** For Google Drive, "Up to date" means nothing is moving
-  or waiting right now and Google Drive's own list of pending work is empty.
-- **Nothing pending · iCloud status, 9:35 AM.** For iCloud Drive, "Up to date" means nothing is moving
+- **Nothing pending · Google Drive's queue, live.** For Google Drive, "Up to date" means nothing is moving
+  or waiting right now and Google Drive's own list of pending work is empty. If Velum can't read that list,
+  the row says it can't tell.
+- **Nothing pending · iCloud status 4 min ago.** For iCloud Drive, "Up to date" means nothing is moving
   or waiting right now and macOS's `brctl status`, checked every 10 minutes, calls iCloud Drive caught up.
-- **From OneDrive.** OneDrive's own icon text, when you've turned that option on and its icons exist.
+  It's old after 25 minutes.
+- **From OneDrive, live.** OneDrive's own icon text, when you've turned that option on and its icons exist.
 
-When Velum has no evidence it says so ("No status yet", "Status unknown") and shows a plain cloud.
+When Velum has no evidence it says "Can't tell" ("Can't tell yet" while it waits for a first answer), with a
+grey question mark, a line saying why and what would end it, and the menu bar's plain cloud. The ⓘ in the
+panel's header, or ••• → What the Status Means…, explains every icon, light and source.
 
 Everything is read-only. Velum doesn't read file contents, other apps' windows, your screen or your
 keystrokes.

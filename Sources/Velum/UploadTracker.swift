@@ -10,6 +10,8 @@ struct UploadSummary: Equatable {
     /// FSEvents may have missed changes (dropped events, a resume point too old to replay, too many files),
     /// so "nothing pending" isn't proof right now.
     var coverageGap = false
+    /// When the gap ends: Velum vouches for "nothing pending" again from then (the reason line says so).
+    var coverageGapUntil: Date?
 }
 
 /// What the tracker knows right now: which accounts it watches, what's still pending in each, and the
@@ -314,6 +316,7 @@ final class UploadTracker: @unchecked Sendable {
             summaries[candidate.account] = summary
         }
         for (account, until) in gapUntil where until > now { summaries[account]?.coverageGap = true }
+        for (account, until) in gapUntil where until > now { summaries[account]?.coverageGapUntil = until }
         let watched = watching
         let seen = completed.filter { recordUploads.contains($0.accountKey) }
 

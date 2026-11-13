@@ -36,7 +36,11 @@ enum DebugDump {
     /// background: only the layout and text are real.
     @MainActor
     static func renderPanel(to path: String, dark: Bool) {
-        var (snapshot, _, _) = collectOnce()
+        // --sample <name>: a made-up panel (SampleData), safe to share; otherwise this Mac's live data.
+        let sample = CommandLine.arguments.firstIndex(of: "--sample").flatMap { i in
+            i + 1 < CommandLine.arguments.count ? SampleData.snapshot(CommandLine.arguments[i + 1]) : nil
+        }
+        var snapshot = sample ?? collectOnce().0
         // --many: three more copies of every account, to check the panel's height cap (--max-height N).
         if CommandLine.arguments.contains("--many") {
             snapshot.accounts += (2...4).flatMap { i in snapshot.accounts.map { $0.copy(suffix: i) } }
@@ -47,6 +51,7 @@ enum DebugDump {
             store.maxPanelHeight = h
         }
         store.show(snapshot)
+        store.showingLegend = CommandLine.arguments.contains("--legend")
         store.loginItemEnabled = LoginItem.isEnabled
         NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         let view = PanelView(store: store, actions: AppModel.actions)
@@ -107,6 +112,7 @@ enum DebugDump {
                 print("    uploads: \(u.uploading) uploading, \(u.waiting) waiting, \(u.failed.count) failed")
             }
             print("    \(account.headline)")
+            if let reason = account.reason { print("    why: \(reason)") }
             if !account.notes.isEmpty { print("    \(account.notes)") }
             if !account.detail.isEmpty { print("    \(account.detail)") }
             print("    folder: \(account.config.folder.path)")

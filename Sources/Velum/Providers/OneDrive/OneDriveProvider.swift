@@ -11,6 +11,8 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
     private var pidKeys: [pid_t: Set<String>] = [:]
     private var diagCache: [String: (stamp: Date?, value: Diagnostics?)] = [:]
     private var activityCache: [String: (stamp: Date?, value: [Activity])] = [:]
+    /// When Velum first saw each account with no usable report, for "One is due by …" (A4).
+    private var noReportSince: [String: Date] = [:]
     private let defaults = UserDefaults.standard
 
     func gather(force: Bool, now: Date) -> ProviderEvidence {
@@ -60,18 +62,29 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
             account.running = pid != nil || mappingUnknown
             account.pid = pid
             account.exactStatus = liveItem?.status
-            account.report = Self.report(from: diag)
+            account.report = Self.report(from: diag, now: now)
+            if account.report == nil {
+                let since = noReportSince[config.key] ?? now
+                noReportSince[config.key] = since
+                account.unknownReason = Self.noReportReason(diag: diag, since: since, now: now)
+            } else {
+                noReportSince[config.key] = nil
+            }
             account.lastActivity = history.first?.date
             evidence.accounts.append(account)
         }
         return evidence
     }
 
+    /// How often OneDrive writes its report while it runs and the Mac is awake.
+    static let reportEvery: TimeInterval = 60 * 60
+
     /// OneDrive's hourly report as an account-wide status. The codes are community-documented; Microsoft
     /// doesn't publish them. A code Velum doesn't know reads as unknown, never as healthy.
-    static func report(from diag: Diagnostics?) -> ProviderReport? {
+    static func report(from diag: Diagnostics?, now: Date = Date()) -> ProviderReport? {
         guard let diag, let code = diag.progressState else { return nil }
-        var report = ProviderReport(label: "OneDrive report", written: diag.written, state: .unknown, headline: "Status unknown")
+        var report = ProviderReport(label: "OneDrive report", written: diag.written, state: .unknown, headline: "Can’t tell",
+                                    every: reportEvery)
         switch code {
         case 65536: report.state = .paused; report.headline = "Paused"
         case 8194: report.state = .offline; report.headline = "Not syncing"
@@ -79,7 +92,42 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
         case 0, 16777216: report.state = .ok; report.headline = "Up to date"
         default: break
         }
+        report.reason = reason(for: report, code: code, now: now)
         return report
+    }
+
+    // MARK: Reasons (A4): why a row can't tell, and what would end it
+
+    /// The reason for a report that leaves the status unknown or old; nil for a fresh, known one.
+    static func reason(for report: ProviderReport, code: Int, now: Date) -> String? {
+        let due = RelTime.clock(report.written.addingTimeInterval(reportEvery))
+        if report.isOld(now: now) {
+            let age = Reasons.duration(now.timeIntervalSince(report.written))
+            let hourly = "It reports about hourly while it runs and this Mac is awake."
+            if report.state == .ok {
+                return "OneDrive last reported “\(report.headline)” at \(RelTime.clock(report.written)), \(age) ago. \(hourly)"
+            }
+            if report.state == .unknown {
+                return "OneDrive’s last report, at \(RelTime.clock(report.written)), is \(age) old. \(hourly)"
+            }
+            return "This report is \(age) old. OneDrive may have changed since."
+        }
+        guard report.state == .unknown else { return nil }
+        let next = now > report.written.addingTimeInterval(reportEvery) ? "Its next report is overdue." : "Its next report is due by \(due)."
+        return "OneDrive reported a status Velum doesn’t recognize (code \(code)). \(next)"
+    }
+
+    /// No usable report: none written yet, none since Velum started looking, or one with no status line.
+    static func noReportReason(diag: Diagnostics?, since: Date, now: Date) -> String {
+        if let diag {
+            return "OneDrive’s report at \(RelTime.clock(diag.written)) had no status Velum can read. Velum keeps looking."
+        }
+        let due = since.addingTimeInterval(reportEvery)
+        // A first sighting can't date the next report, so no time is promised (Codex, Fable).
+        if now <= due {
+            return "No OneDrive report yet. OneDrive usually writes one about every hour while it runs and this Mac is awake."
+        }
+        return "No OneDrive report since \(RelTime.clock(since)), though it writes one about every hour while this Mac is awake."
     }
 
     static func sameAccount(_ liveName: String, _ config: AccountConfig) -> Bool {

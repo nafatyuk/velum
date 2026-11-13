@@ -22,19 +22,20 @@ import Testing
     @Test func queueDecidesTheReport() {
         let empty = GoogleDriveProvider.report(queued: 0, now: Fixture.now)
         #expect(empty.state == .ok)
-        #expect(empty.source == "Google Drive's queue empty")
+        #expect(empty.source == "Google Drive's queue")
         let busy = GoogleDriveProvider.report(queued: 3, now: Fixture.now)
         #expect(busy.state == .syncing)
         #expect(busy.headline == "Syncing changes")
         let s = Fixture.status(Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root), report: empty))
         #expect(s.headline == "Up to date")
-        #expect(s.source == "Nothing pending · Google Drive's queue empty")
+        #expect(s.source == "Nothing pending · Google Drive's queue")
+        #expect(s.detail == "Nothing pending · Google Drive's queue, live")
     }
 
     @Test func noQueueNoUpToDate() {
         let s = Fixture.status(Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root)))
         #expect(s.state == .unknown)
-        #expect(s.headline == "No status yet")
+        #expect(s.headline == "Can’t tell yet")
     }
 
     @Test func readsTheOperationsTable() throws {
@@ -126,13 +127,19 @@ import Testing
         #expect(s.lidVerdict == .busy("a@b.c"))
     }
 
-    @Test func unreadableQueueStillCountsFlags() {
+    /// A running app is no evidence that Drive is caught up (A4; P3 had it green): the row can't tell, says
+    /// why, and the per-file flags still count.
+    @Test func unreadableQueueCantTellButCountsFlags() {
         let e = Fixture.evidence(GoogleDriveProvider.config(email: "a@b.c", root: root),
                                  report: GoogleDriveProvider.runningReport(now: Fixture.now))
         let s = Fixture.status(e)
-        #expect(s.state == .ok)
-        #expect(s.source == "Nothing pending · Google Drive running")
+        #expect(s.state == .unknown)
+        #expect(s.headline == "Can’t tell")
+        #expect(s.reason == "Velum can’t read Google Drive’s queue on this version. Per-file status from macOS still works. Nothing is waiting to upload.")
         #expect(!s.workPending)
+        var uploads = UploadSummary()
+        uploads.waiting = 2
+        #expect(Fixture.status(e, uploads: uploads).headline == "Waiting to upload 2 files")
     }
 
     @Test func shortcutTargetsAndTrash() {

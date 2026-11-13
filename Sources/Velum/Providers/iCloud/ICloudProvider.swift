@@ -14,7 +14,9 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
     static let key = "iCloudDrive"
 
     private let home: URL
-    private let checkEvery: TimeInterval = 10 * 60
+    private let checkEvery = ICloudProvider.checkInterval
+    /// How often Velum asks `brctl status`; a report older than this plus 15 minutes is old (A4).
+    static let checkInterval: TimeInterval = 10 * 60
     private var config: AccountConfig?
     private var lastDiscovery = Date.distantPast
 
@@ -25,6 +27,8 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
     private var quota: Int64?
     private var lastCheck = Date.distantPast
     private var checking = false
+    /// Whether the last check's `brctl status` gave a usable answer; nil before the first finishes.
+    private var lastAnswered: Bool?
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         self.home = home
@@ -41,17 +45,28 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         checkIfDue(now: now, force: force)
 
         lock.lock()
-        let report = self.report
+        var report = self.report
         let quota = self.quota
+        let lastCheck = self.lastCheck == .distantPast ? nil : self.lastCheck
+        let checking = self.checking
+        let answered = self.lastAnswered
         lock.unlock()
 
         var account = AccountEvidence(config: config, name: "iCloud Drive")
+        let next = lastCheck.map { $0.addingTimeInterval(checkEvery) }
+        if var known = report {
+            known.reason = Self.reason(for: known, answered: answered, checking: checking, next: next, now: now)
+            report = known
+        } else {
+            account.unknownReason = Self.noStatusReason(lastCheck: lastCheck, answered: answered, checking: checking, next: next)
+        }
         account.report = report
         if config.watchRoots.count > 1 { account.notes.append("Desktop & Documents included") }
         var evidence = ProviderEvidence(present: true, clientRunning: nil)
         if let quota {
             if quota <= 0 {
                 account.notes.append("iCloud storage is full")
+                account.notesNeedAttention = true    // orange, as the legend says (A4)
                 evidence.trouble = "Storage full"
             } else {
                 account.notes.append("\(ByteCountFormatter.string(fromByteCount: quota, countStyle: .file)) free")
@@ -109,6 +124,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
             if let quota { self.quota = quota }
             if let status { self.report = status }
             lastCheck = Date()
+            lastAnswered = status != nil
             checking = false
             lock.unlock()
         }
@@ -137,7 +153,32 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         let healthy = client == "idle" && line.contains("caught-up")
         return ProviderReport(label: "iCloud status", written: time,
                               state: healthy ? .ok : .unknown,
-                              headline: healthy ? "Up to date" : "Status unknown")
+                              headline: healthy ? "Up to date" : "Can’t tell", every: checkInterval)
+    }
+
+    // MARK: Reasons (A4): why the row can't tell, and what would end it
+
+    /// No status yet: the first check is running (it takes 10 to 13 s), or iCloud didn't answer.
+    static func noStatusReason(lastCheck: Date?, answered: Bool?, checking: Bool, next: Date?) -> String {
+        guard let lastCheck, answered == false else {
+            return "Checking iCloud now. This takes about 15 seconds."
+        }
+        if checking { return "iCloud didn’t answer the \(RelTime.clock(lastCheck)) check. Velum is asking again now." }
+        let again = next.map { " Velum tries again at \(RelTime.clock($0))." } ?? ""
+        return "iCloud didn’t answer the \(RelTime.clock(lastCheck)) check.\(again)"
+    }
+
+    /// The reason for a check that left the status unknown, or one that has gone old; nil for a fresh, healthy one.
+    static func reason(for report: ProviderReport, answered: Bool?, checking: Bool, next: Date?, now: Date) -> String? {
+        let again = checking ? " Velum is checking again now." : next.map { " Velum checks again at \(RelTime.clock($0))." } ?? ""
+        if report.isOld(now: now) {
+            // After sleep no check may have run at all, so "hasn't answered" only after one that failed.
+            let age = Reasons.duration(now.timeIntervalSince(report.written))
+            let silent = answered == false ? "; it hasn’t answered since" : ""
+            return "iCloud’s last answer, at \(RelTime.clock(report.written)), is \(age) old\(silent).\(again)"
+        }
+        guard report.state == .unknown else { return nil }
+        return "At \(RelTime.clock(report.written)) iCloud didn’t say it’s caught up.\(again)"
     }
 
     /// `brctl quota`: "1272173412087 bytes of quota remaining in personal account".

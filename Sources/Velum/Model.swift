@@ -53,6 +53,18 @@ struct AccountStatus: Identifiable, Equatable {
     var workPending = false
     /// Since when the provider's own queue has held work.
     var workingSince: Date?
+    /// How old the status's evidence is: "live", "12 min ago"; empty when there is none (A4).
+    var age = ""
+    /// The status rests on an old report (past its interval plus 15 minutes): never green, and it says "old".
+    var isOld = false
+    /// Why Velum can't tell (or can't vouch), and what would end it, from the provider or the tracker.
+    var reason: String?
+    /// The words of an old problem report ("Paused"), for the summary's shorter form of an old status.
+    var lastReported: String?
+
+    /// The headline as the summary, tooltip and VoiceOver's icon label say it: an old problem reads
+    /// "Paused (old report)" there rather than the row's "Last reported: Paused · old".
+    var briefHeadline: String { lastReported.map(Reasons.briefOld) ?? headline }
 
     var id: String { config.key }
     var provider: ProviderID { config.provider }
@@ -93,7 +105,7 @@ struct Snapshot: Equatable {
     var stoppedProviders: [ProviderID] { providers.filter(\.isStopped).map(\.id) }
 
     /// "Is it safe to close the lid?", from live upload tracking only: a provider's hourly report can say
-    /// "healthy" while a file is still waiting to go up.
+    /// "healthy" while a file is still waiting to go up. Reports must never feed it, old or fresh (A4).
     var lidVerdict: LidVerdict {
         if let stopped = providers.first(where: \.isStopped) { return .notRunning(stopped.id.name) }
         if providers.isEmpty { return .unknown("No cloud accounts found") }
@@ -172,10 +184,22 @@ final class Collector: @unchecked Sendable {
         let config = account.config
         let report = account.report
         var state = SyncState.unknown
-        var headline = "No status yet"
+        var headline = "Can’t tell yet"
         var source = ""
         var extra: [String] = []
         var working = false
+        var age = "live"
+        var old = false
+        var reason: String?
+        // The source as the row shows it, with its age ("OneDrive report 12 min ago", "From OneDrive, live").
+        // `source` itself stays free of the age, so the debug log doesn't record a change every minute.
+        var shown = ""
+        // The reason explains the status itself (names its source and time), so the row drops the source line.
+        var reasonReplacesSource = false
+        var lastReported: String?
+        // A report dated in the future (the clock moved) has no age Velum can trust: it decides nothing.
+        let future = report.map { $0.timed && $0.written.timeIntervalSince(now) > 5 * 60 } ?? false
+        let usable = report.map { !$0.isOld(now: now) && !future } ?? false
 
         let failed = uploads?.failed ?? []
         let uploading = max(uploads?.uploading ?? 0, transfer?.uploadingFiles ?? 0)
@@ -194,6 +218,9 @@ final class Collector: @unchecked Sendable {
             state = SyncState.classify(exact)
             headline = exact
             source = "From \(config.provider.name)"
+            shown = "\(source), live"
+            // OneDrive's own words stay as the headline, with their source; the reason only says they're unknown.
+            if state == .unknown { reason = Reasons.unrecognizedWords(config.provider) }
         } else if !failed.isEmpty {
             state = .error
             headline = failed.count == 1 ? "1 file can't upload" : "\(failed.count) files can't upload"
@@ -211,7 +238,7 @@ final class Collector: @unchecked Sendable {
             if let bytes = transfer?.bytesText { extra.append(bytes) }
             source = "Live from macOS"
         } else if waiting > 0 {
-            let paused = report?.state == .paused
+            let paused = report?.state == .paused && usable
             state = paused ? .paused : .syncing
             headline = paused ? "Paused, \(files(waiting)) waiting" : "Waiting to upload \(files(waiting))"
             if let oldest = uploads?.oldestWaiting, now.timeIntervalSince(oldest) > 10 * 60 {
@@ -224,20 +251,66 @@ final class Collector: @unchecked Sendable {
             source = "Live from macOS"
             working = true
         } else if let report {
-            working = report.state == .syncing
+            old = !usable
+            // Only live evidence (Google Drive's queue) may hold the lid at "still syncing"; a periodic report
+            // never decides the lid line, fresh or old.
+            working = !report.timed && report.state == .syncing
             state = report.state
             headline = report.headline
             source = report.source
-            if report.state == .ok {
+            age = !report.timed ? "live" : future ? "" : RelTime.string(report.written, now: now)
+            shown = report.timed ? "\(report.label) \(age)" : "\(report.label), live"
+            if future {
+                state = .unknown
+                headline = Reasons.futureHeadline
+                reason = Reasons.future(report)
+                reasonReplacesSource = true
+            } else if old {
+                // Old evidence is never green: a healthy report past its time becomes "can't tell", and its
+                // last words move into the reason. A problem stays a problem (that isn't assuming OK), marked
+                // old, and keeps its source line, which carries the age.
+                reason = report.reason ?? Reasons.old(report, now: now)
+                if state == .ok || state == .unknown {
+                    state = .unknown
+                    headline = Reasons.oldHeadline
+                    reasonReplacesSource = true
+                } else {
+                    headline = Reasons.lastReported(report.headline)
+                    lastReported = report.headline
+                }
+            } else if report.state == .ok {
                 // A healthy report plus, when Velum is watching with no gaps, nothing pending right now.
                 let liveCoverage = watchingUploads && uploads?.coverageGap != true
-                if liveCoverage { source = "Nothing pending · \(report.source)" }
+                if liveCoverage {
+                    source = "Nothing pending · \(report.source)"
+                    shown = "Nothing pending · \(shown)"
+                }
+            } else if report.state == .unknown, let why = report.reason {
+                reason = why
+                reasonReplacesSource = true
             }
+        } else {
+            age = ""
+            reason = account.unknownReason
+            reasonReplacesSource = reason != nil
         }
+        if account.running, watchingUploads, uploads?.coverageGap != true, reasonReplacesSource,
+           waiting + uploading + failed.count == 0, !unlabelled {
+            // What Velum does know: every local change it saw is in the cloud. It reconciles a grey row with
+            // "Safe to close the lid" above it.
+            reason = [reason, Reasons.nothingWaiting].compactMap { $0 }.joined(separator: " ")
+        }
+        if account.running, watchingUploads, uploads?.coverageGap == true {
+            reason = [reason, Reasons.coverageGap(until: uploads?.coverageGapUntil)].compactMap { $0 }.joined(separator: " ")
+        } else if account.running, !watchingUploads {
+            // The lid line can't vouch for this account either; say why here too.
+            reason = [reason, Reasons.notWatchingYet].compactMap { $0 }.joined(separator: " ")
+        }
+        if account.running, !source.isEmpty, shown.isEmpty { shown = source }
 
         var details = extra
-        if !source.isEmpty { details.append(source) }
-        if let last = account.lastActivity { details.append("last activity \(RelTime.string(last, now: now))") }
+        if !reasonReplacesSource, !shown.isEmpty { details.append(shown) }
+        if let last = account.lastActivity { details.append("last change \(RelTime.string(last, now: now))") }
 
         var status = AccountStatus(config: config, name: account.name, state: state, headline: headline,
                                    detail: details.joined(separator: " · "), source: source, pid: account.pid,
@@ -253,6 +326,10 @@ final class Collector: @unchecked Sendable {
         status.uploadsCovered = account.running && watchingUploads && uploads?.coverageGap != true
         status.workPending = account.running && working
         status.workingSince = working ? account.workingSince : nil
+        status.age = age
+        status.isOld = old
+        status.reason = reason
+        status.lastReported = lastReported
         return status
     }
 }
@@ -316,30 +393,39 @@ final class Store: ObservableObject {
             if let stopped = snapshot.stoppedProviders.first { return "\(stopped.name) isn’t running" }
             return "No cloud accounts found"
         }
-        let attention = snapshot.accounts.filter { $0.state != .ok }
-        if attention.isEmpty {
+        let attention = snapshot.accounts.filter { $0.state != .ok && $0.state != .unknown }
+        let unsure = snapshot.accounts.filter { $0.state == .unknown }
+        if attention.isEmpty && unsure.isEmpty {
             switch snapshot.accounts.count {
             case 1: return "Up to date"
             case 2: return "Both accounts are up to date"
             default: return "Everything is up to date"
             }
         }
+        var parts: [String] = []
         if attention.count > 2 {
-            return "\(attention.count) of \(snapshot.accounts.count) accounts need attention"
+            parts.append("\(attention.count) of \(snapshot.accounts.count) accounts need attention")
+        } else {
+            parts += attention.map { "\($0.name): \($0.briefHeadline)" }
         }
-        return attention.map { "\($0.name): \($0.headline)" }.joined(separator: " · ")
+        // Unknown is said as such and never counted as needing attention: Velum can't tell (A4).
+        if let line = Reasons.cantTell(unsure.map(\.name), of: snapshot.accounts.count) { parts.append(line) }
+        return parts.joined(separator: " · ")
     }
+
+    /// The legend ("What the Status Means…") is showing in place of the accounts. The panel opens without it.
+    @Published var showingLegend = false
 
     /// Read by VoiceOver on the menu bar icon: one sentence per account, or with many accounts only the
     /// ones needing attention plus how many are up to date.
     var accessibilitySummary: String {
         if snapshot.accounts.isEmpty { return "\(title): \(summary)" }
-        return "\(title). " + listed.map { "\(spokenName($0)): \($0.headline)." }.joined(separator: " ") + restLine(". ")
+        return "\(title). " + listed.map { "\(spokenName($0)): \($0.briefHeadline)." }.joined(separator: " ") + restLine(". ")
     }
 
     var tooltip: String {
         if snapshot.accounts.isEmpty { return "\(title): \(summary)" }
-        return (listed.map { "\($0.name): \($0.headline)" } + [restLine("")].filter { !$0.isEmpty }).joined(separator: "\n")
+        return (listed.map { "\($0.name): \($0.briefHeadline)" } + [restLine("")].filter { !$0.isEmpty }).joined(separator: "\n")
     }
 
     private var listed: [AccountStatus] {
