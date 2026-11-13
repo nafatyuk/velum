@@ -25,6 +25,10 @@ keeps working.
 - **Stuck files, by name.** Files whose latest change still isn't in the cloud after 10 minutes, or that
   can't upload, are listed under "Not in the cloud yet" with how long they've waited or why they fail.
   Click one to show it in Finder. The stuck alert names the oldest one.
+- **A week of history per account.** A thin line under each account shows its last 7 days, hour by hour:
+  uploads, quiet hours, stalls (files waiting 10 minutes with nothing uploaded) and failures, and blanks
+  where Velum wasn't watching. A stall of a day or more is named on the row. Kept 30 days, on this Mac
+  only, as counts: never file names.
 - **iCloud Drive too.** Its own row under an iCloud heading, with the same live upload tracking, the
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.
@@ -262,7 +266,7 @@ off by default.
 1. Click Velum's cloud → ••• → Quit Velum, then delete `~/Applications/Velum.app`.
 2. Remove Velum from System Settings → General → Login Items and from Privacy & Security →
    Accessibility.
-3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain) and run
+3. Optionally delete `~/Library/Application Support/Velum/` (the local signing keychain and the sync history) and run
    `defaults delete io.github.nafatyuk.velum`.
 4. Turn OneDrive back on in System Settings → Menu Bar → Allow in the Menu Bar.
 

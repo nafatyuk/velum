@@ -250,7 +250,7 @@ final class Collector: @unchecked Sendable {
             state = paused ? .paused : .syncing
             headline = paused ? "Paused, \(files(waiting)) waiting" : "Waiting to upload \(files(waiting))"
             if let oldest = uploads?.oldestWaiting, now.timeIntervalSince(oldest) > 10 * 60 {
-                extra.append("waiting since \(RelTime.clock(oldest))")
+                extra.append("waiting since \(RelTime.clockWithDay(oldest, now: now))")   // A6: the day when not today
             }
             source = "Live from macOS"
         } else if unlabelled {
@@ -507,6 +507,7 @@ final class Store: ObservableObject {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.inFlight = false
+                    History.shared.record(next, uploaded: self.uploadTracker.uploadedCounts())   // A6: into this hour's record
                     if next != self.snapshot {
                         self.snapshot = next
                     }
