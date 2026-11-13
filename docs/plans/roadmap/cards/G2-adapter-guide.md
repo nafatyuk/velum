@@ -120,7 +120,11 @@ What it found, and what changed:
 12. "Deep" undefined → defined.
 13. `/Users/sample` in `SampleData` → noted.
 
-**Compile.** The sketch, and the guide's own skeleton copied verbatim beside it (pointed at the sketch's Dropbox case), went through the queue in the scratch copy as `velum-g2-dropbox-sketch`. Result: pending when this was first committed; see the next commit. Nothing from the dry run is committed.
+**Compile.** The sketch, and the guide's own skeleton copied verbatim beside it (pointed at the sketch's Dropbox case), went through the queue in the scratch copy as `velum-g2-dropbox-sketch`. The job ran at about 3 AM:
+- `swift build` passed, with no warnings from the sketch or the skeleton, so the skeleton's caption now says it compiled once;
+- `Scripts/test.sh` ran 174 tests, the 164 on `f07c78d` plus the sketch's 10 Dropbox tests. The Dropbox suite passed, and only the four stale expectations described below failed.
+
+Nothing from the dry run is committed. It stays in the session's scratchpad.
 
 ### Found in passing, for the owner and other cards
 

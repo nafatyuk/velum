@@ -426,8 +426,9 @@ switches in all). The rest the compiler can't see.
 | `README.md` | The services named in the opening paragraphs, the Requirements line ("tested with"), a paragraph under "How Velum knows", a row per source in its table, and your service's limits |
 | `Tests/VelumTests/<Service>Tests.swift` | See [Testing without anyone's data](#testing-without-anyones-data) |
 
-A minimal adapter, for orientation. It is not compiled, and it is not a template to paste: each line needs
-evidence from a real Mac. If it disagrees with `SyncProvider.swift`, the code wins.
+A minimal adapter, for orientation. It compiled once, in this guide's dry run (with a real `ProviderID` case
+in place of `.example`), but it is not a template to paste: each line needs evidence from a real Mac. If it
+disagrees with `SyncProvider.swift`, the code wins.
 
 ```swift
 import AppKit
