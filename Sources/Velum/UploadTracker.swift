@@ -8,10 +8,30 @@ struct UploadSummary: Equatable {
     var failed: [String] = []      // "<file name>: <reason>"
     var oldestWaiting: Date?
     /// FSEvents may have missed changes (dropped events, a resume point too old to replay, too many files),
-    /// so "nothing pending" isn't proof right now.
+    /// so "nothing pending" isn't proof right now. Only a finished re-check of the account's folders ends it.
     var coverageGap = false
-    /// When the gap ends: Velum vouches for "nothing pending" again from then (the reason line says so).
-    var coverageGapUntil: Date?
+    /// When Velum may have started missing changes (the reason line says so).
+    var coverageGapSince: Date?
+    /// What ends the gap: the re-check, under way or failed.
+    var coverageCheck: CoverageCheck?
+}
+
+/// The re-check that ends a coverage gap: a walk of the account's folders asking File Provider about every file.
+enum CoverageCheck: Equatable {
+    /// Under way, or about to start.
+    case checking
+    /// The last re-check couldn't finish; the gap stays, and Velum tries again at `retry`.
+    case failed(RecheckFailure, retry: Date)
+}
+
+/// Why a re-check couldn't finish.
+enum RecheckFailure: Equatable {
+    /// The folders hold more files than one re-check looks at.
+    case tooManyFiles(Int)
+    /// More files are out of the cloud than the tracker can hold.
+    case tooManyPending(Int)
+    /// A folder couldn't be read, or is gone.
+    case unreadable
 }
 
 /// What the tracker knows right now: which accounts it watches, what's still pending in each, and the
@@ -57,7 +77,11 @@ struct PendingList: Equatable {
 /// within a second or two of the service's own record. Public APIs, no permission needed, and unlike
 /// OneDrive's icon text it keeps working after OneDrive restarts with its icons hidden.
 ///
-/// Pending files and the FSEvents resume point are saved, so a quit or restart doesn't lose track.
+/// When FSEvents may have missed changes, the account has a coverage gap, and Velum can't vouch for "nothing
+/// pending" until a re-check has walked its folders and fed every file File Provider says isn't in the cloud
+/// into the pending files. Only a finished re-check ends a gap; no timer does.
+///
+/// Pending files, open gaps and the FSEvents resume point are saved, so a quit or restart doesn't lose track.
 final class UploadTracker: @unchecked Sendable {
     private final class Stream {
         let key: String
@@ -86,12 +110,46 @@ final class UploadTracker: @unchecked Sendable {
         var checked: Date
     }
 
+    /// A stretch where FSEvents may have missed changes in one account. Only a finished re-check of the
+    /// account's folders ends it; a loss during the re-check needs another one.
+    private struct Gap {
+        enum Check {
+            /// Starts then: a few seconds after the latest loss, so a burst of them settles first.
+            case due(Date)
+            case running
+            case failed(RecheckFailure, retry: Date)
+        }
+
+        var since: Date
+        /// Bumped on every loss, so a re-check that started earlier never ends a newer gap.
+        var generation = 1
+        var check: Check
+
+        func isDue(_ now: Date) -> Bool {
+            switch check {
+            case .due(let at), .failed(_, let at): at <= now
+            case .running: false
+            }
+        }
+
+        var dueDate: Date {
+            switch check {
+            case .due(let at), .failed(_, let at): at
+            case .running: .distantFuture
+            }
+        }
+    }
+
     private let queue = DispatchQueue(label: "Velum.fsevents", qos: .utility)
+    private let recheckQueue = DispatchQueue(label: "Velum.recheck", qos: .utility)
     private let lock = NSLock()
     // Guarded by lock:
     private var candidates: [String: Candidate] = [:]
     private var watching: Set<String> = []
-    private var gapUntil: [String: Date] = [:]
+    private var roots: [String: [URL]] = [:]
+    private var gaps: [String: Gap] = [:]
+    private var gapsDirty = false
+    private var rechecking = false
     private var dirty = false
     private var completedDirty = false
     private var checkpoint: (id: FSEventStreamEventId, taken: Date)?
@@ -102,14 +160,22 @@ final class UploadTracker: @unchecked Sendable {
     private var streams: [String: Stream] = [:]
 
     private let defaults: UserDefaults
+    private let inspector: @Sendable (String) -> Outcome
     private let pendingKey = "pendingUploads"
     private let completedKey = "recentUploads"
+    private let gapsKey = "coverageGaps"
     private let completedLimit = 30
-    private let maxCandidates = 5000
-    private let inspectBudget = 400                 // File Provider lookups per refresh
+    private let inspectBudget = 400                 // File Provider lookups per refresh (each takes about 3 ms)
     private let maxReplay: TimeInterval = 86_400    // don't replay more than a day of change history
-    private let gapDuration: TimeInterval = 15 * 60
     private let checkpointEvery: TimeInterval = 10 * 60
+    private let recheckSettle: TimeInterval = 5     // after the latest loss, before a re-check starts
+    private let recheckRetry: TimeInterval = 30 * 60
+    // Internal (not private) so tests can lower them:
+    var maxCandidates = 5000
+    /// File Provider lookups one re-check may make, about 10 minutes' worth at its pace. Past it the gap stays.
+    var recheckLimit = 100_000
+    /// Tests run re-checks synchronously, on the thread that calls `summary`.
+    var rechecksInline = false
 
     private static let keys: Set<URLResourceKey> = [
         .isUbiquitousItemKey, .ubiquitousItemIsUploadedKey, .ubiquitousItemIsUploadingKey,
@@ -119,8 +185,10 @@ final class UploadTracker: @unchecked Sendable {
     /// Called on a background queue when files change. Set before `watch`.
     var onChange: (@Sendable () -> Void)?
 
-    init(defaults: UserDefaults = .standard) {
+    /// `inspector` asks File Provider where a file is; tests pass made-up answers.
+    init(defaults: UserDefaults = .standard, inspector: @escaping @Sendable (String) -> Outcome = { UploadTracker.inspect($0) }) {
         self.defaults = defaults
+        self.inspector = inspector
         if let data = defaults.data(forKey: pendingKey),
            let saved = try? JSONDecoder().decode([String: Candidate].self, from: data) {
             candidates = saved
@@ -128,6 +196,11 @@ final class UploadTracker: @unchecked Sendable {
         if let data = defaults.data(forKey: completedKey),
            let saved = try? JSONDecoder().decode([Activity].self, from: data) {
             completed = saved.filter { Self.isSyncable($0.path) }   // drops entries an older build mis-recorded
+        }
+        if let saved = defaults.dictionary(forKey: gapsKey) as? [String: Date] {
+            // A gap outlives a quit: the resume point has already moved past the lost events.
+            let due = Date().addingTimeInterval(recheckSettle)
+            gaps = saved.mapValues { Gap(since: $0, check: .due(due)) }
         }
     }
 
@@ -150,9 +223,17 @@ final class UploadTracker: @unchecked Sendable {
             let stream = Stream(key: key, roots: list, tracker: self)
             if start(stream) { streams[key] = stream }
         }
-        let keys = Set(streams.keys)
+        adopt(streams.mapValues(\.roots), recordingUploadsFor: recordingUploadsFor)
+    }
+
+    /// Takes the accounts now watched and their folders (which a re-check walks). Internal (not private) so tests
+    /// can watch made-up folders without FSEvents. Gaps of accounts no longer watched are kept: if the account
+    /// comes back, its resume point is already past the lost events, so it still needs its re-check.
+    func adopt(_ roots: [String: [URL]], recordingUploadsFor: Set<String> = []) {
+        let keys = Set(roots.keys)
         lock.lock()
         watching = keys
+        self.roots = roots
         recordUploads = recordingUploadsFor
         candidates = candidates.filter { keys.contains($0.value.account) }
         lock.unlock()
@@ -223,10 +304,24 @@ final class UploadTracker: @unchecked Sendable {
     }
 
     private func noteGap(_ account: String) {
-        debugLog("tracker", "\(account): saved resume point too old to replay; watching from now, so changes made meanwhile may be missed")
+        debugLog("tracker", "\(account): saved resume point too old to replay; watching from now and re-checking its folders")
         lock.lock()
-        gapUntil[account] = Date().addingTimeInterval(gapDuration)
+        markGap(account, now: Date())
         lock.unlock()
+    }
+
+    /// Opens a gap, or extends an open one: its re-check (re)starts a few seconds after the latest loss, and one
+    /// already running won't end it. Lock held.
+    private func markGap(_ account: String, now: Date) {
+        let due = Gap.Check.due(now.addingTimeInterval(recheckSettle))
+        guard var gap = gaps[account] else {
+            gaps[account] = Gap(since: now, check: due)
+            gapsDirty = true
+            return
+        }
+        gap.generation += 1
+        if case .running = gap.check {} else { gap.check = due }
+        gaps[account] = gap
     }
 
     // MARK: Events
@@ -246,7 +341,7 @@ final class UploadTracker: @unchecked Sendable {
         lock.lock()
         for event in events {
             if event.flags & lostEvents != 0 {
-                gapUntil[account] = now.addingTimeInterval(gapDuration)
+                markGap(account, now: now)
                 dropped |= event.flags & lostEvents
                 continue
             }
@@ -268,14 +363,14 @@ final class UploadTracker: @unchecked Sendable {
             }
         }
         if dropped != 0 {
-            debugLog("tracker", "\(account): macOS dropped change events (flags 0x\(String(dropped, radix: 16))); can't vouch for 15 minutes")
+            debugLog("tracker", "\(account): macOS dropped change events (flags 0x\(String(dropped, radix: 16))); can't vouch until a re-check of its folders finishes")
         }
         if candidates.count > maxCandidates {
             debugLog("tracker", "more than \(maxCandidates) changed files pending; forgetting the oldest and marking a gap")
             let oldest = candidates.sorted { $0.value.since < $1.value.since }.prefix(candidates.count - maxCandidates)
             for (path, candidate) in oldest {
                 candidates[path] = nil
-                gapUntil[candidate.account] = now.addingTimeInterval(gapDuration)
+                markGap(candidate.account, now: now)
             }
         }
         lock.unlock()
@@ -304,7 +399,7 @@ final class UploadTracker: @unchecked Sendable {
             .map { (path: $0.key, generation: $0.value.generation) }
         lock.unlock()
 
-        let results = due.map { (path: $0.path, generation: $0.generation, state: Self.inspect($0.path)) }
+        let results = due.map { (path: $0.path, generation: $0.generation, state: inspector($0.path)) }
 
         lock.lock()
         for result in results {
@@ -351,8 +446,23 @@ final class UploadTracker: @unchecked Sendable {
             }
             summaries[candidate.account] = summary
         }
-        for (account, until) in gapUntil where until > now { summaries[account]?.coverageGap = true }
-        for (account, until) in gapUntil where until > now { summaries[account]?.coverageGapUntil = until }
+        for (account, gap) in gaps where summaries[account] != nil {
+            summaries[account]?.coverageGap = true
+            summaries[account]?.coverageGapSince = gap.since
+            if case .failed(let why, let retry) = gap.check, retry > now {
+                summaries[account]?.coverageCheck = .failed(why, retry: retry)
+            } else {
+                summaries[account]?.coverageCheck = .checking
+            }
+        }
+        // One re-check at a time, the longest-due first.
+        var recheck: String?
+        if !rechecking, let next = gaps.filter({ watching.contains($0.key) && $0.value.isDue(now) })
+            .min(by: { ($0.value.dueDate, $0.key) < ($1.value.dueDate, $1.key) })?.key {
+            rechecking = true
+            gaps[next]?.check = .running
+            recheck = next
+        }
         let watched = watching
         let seen = completed.filter { recordUploads.contains($0.accountKey) }
 
@@ -371,7 +481,159 @@ final class UploadTracker: @unchecked Sendable {
         } else {
             persistIfDirty()
         }
+        if let recheck {
+            if rechecksInline { self.recheck(recheck) } else { recheckQueue.async { self.recheck(recheck) } }
+        }
         return UploadsSnapshot(watching: watched, accounts: summaries, completed: seen)
+    }
+
+    // MARK: Re-checks
+
+    /// Ends a gap by verifying: walks the account's folders and feeds every file File Provider says is waiting,
+    /// uploading or failing into the pending files, as if FSEvents had reported it. The gap closes only if the
+    /// walk finishes with no newer loss meanwhile; otherwise it stays and says why. Runs off the main thread.
+    private func recheck(_ account: String) {
+        // Never make a client download anything: with this off, reading an online-only (dataless) folder fails
+        // instead of fetching its listing from the server. This thread only, restored afterwards.
+        let policy = getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD)
+        setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
+        defer { if policy >= 0 { setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD, policy) } }
+
+        lock.lock()
+        let folders = roots[account] ?? []
+        let generation = gaps[account]?.generation
+        lock.unlock()
+        let started = Date()
+        debugLog("tracker", "\(account): re-checking \(folders.count) folder\(folders.count == 1 ? "" : "s") for changes a gap may have hidden")
+        let walk = walk(account, folders)
+
+        let now = Date()
+        var line: String
+        lock.lock()
+        rechecking = false
+        let counts = "looked at \(walk.looked) files in \(Int(now.timeIntervalSince(started))) s, \(walk.found) newly found not in the cloud"
+        switch (walk.outcome, gaps[account]) {
+        case (_, nil):
+            line = "re-check ended (\(counts)); the gap was already gone"
+        case (.finished, let gap?) where gap.generation == generation && roots[account] == folders:
+            gaps[account] = nil
+            gapsDirty = true
+            line = "re-check finished (\(counts)); the gap is closed"
+        case (.failed(let why), var gap?):
+            gap.check = .failed(why, retry: now.addingTimeInterval(recheckRetry))
+            gaps[account] = gap
+            line = "re-check couldn't finish: \(Reasons.recheckFailure(why)) (\(counts)); the gap stays, next try in \(Int(recheckRetry / 60)) min"
+        case (_, var gap?):
+            // Changes were lost again meanwhile, the folders changed, or the account isn't watched now.
+            gap.check = .due(now)
+            gaps[account] = gap
+            line = "re-check ended (\(counts)), but changes may have been missed again meanwhile; checking again"
+        }
+        lock.unlock()
+        debugLog("tracker", "\(account): \(line)")
+        persistIfDirty()
+        onChange?()
+    }
+
+    private struct Walk {
+        enum Outcome: Equatable { case finished, failed(RecheckFailure), cancelled }
+        var outcome = Outcome.finished
+        var looked = 0      // File Provider lookups
+        var found = 0       // files not in the cloud that the tracker didn't hold yet
+    }
+
+    /// Walks the folders, skipping online-only folders (nothing local can wait in one), the Trash and names no
+    /// service uploads. Asks File Provider about each file in batches of `inspectBudget`, resting as long as
+    /// each batch took, so the clients' own daemon stays responsive. Reads metadata only, never file contents.
+    private func walk(_ account: String, _ folders: [URL]) -> Walk {
+        var walk = Walk()
+        guard !folders.isEmpty else {   // not watched now; walking nothing must never close a gap
+            walk.outcome = .cancelled
+            return walk
+        }
+        var found: [(path: String, state: State)] = []
+        var batchStarted = Date()
+
+        // Adds what this batch found to the pending files; nil means carry on.
+        func merge() -> Walk.Outcome? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard watching.contains(account) else { return .cancelled }
+            let now = Date()
+            for file in found where candidates[file.path] == nil {
+                guard candidates.count < maxCandidates else { return .failed(.tooManyPending(maxCandidates)) }
+                // The change happened at some point before now; like a replayed FSEvent, it dates from now.
+                candidates[file.path] = Candidate(account: account, since: now, generation: 0, state: file.state, checked: now)
+                dirty = true
+                walk.found += 1
+            }
+            found.removeAll()
+            return nil
+        }
+
+        for folder in folders {
+            var isFolder: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+                walk.outcome = .failed(.unreadable)
+                return walk
+            }
+            if Self.isDataless(folder.path) { continue }
+            var unreadable = false
+            let items = FileManager.default.enumerator(
+                at: folder, includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey], options: [],
+                errorHandler: { _, error in
+                    // Something deleted mid-walk is fine (FSEvents reports deletions); anything else means part
+                    // of the folders went unchecked.
+                    if Self.isGone(error) { return true }
+                    unreadable = true
+                    return false
+                })
+            while let url = items?.nextObject() as? URL {
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+                if values?.isDirectory == true {
+                    if url.lastPathComponent == ".Trash" || Self.isDataless(url.path) { items?.skipDescendants() }
+                    continue
+                }
+                guard values?.isRegularFile == true, Self.isSyncable(url.path) else { continue }
+                guard walk.looked < recheckLimit else {
+                    walk.outcome = merge() ?? .failed(.tooManyFiles(recheckLimit))
+                    return walk
+                }
+                walk.looked += 1
+                // Only what File Provider says outright. A file it reports nothing for (OneDrive's hidden root
+                // marker, say) is left to FSEvents, as before the gap.
+                if case .pending(let state) = inspector(url.path), state != .unchecked {
+                    found.append((url.path, state))
+                }
+                if walk.looked % inspectBudget == 0 {
+                    if let stop = merge() {
+                        walk.outcome = stop
+                        return walk
+                    }
+                    Thread.sleep(forTimeInterval: min(Date().timeIntervalSince(batchStarted), 5))
+                    batchStarted = Date()
+                }
+            }
+            if items == nil || unreadable {
+                walk.outcome = merge() ?? .failed(.unreadable)
+                return walk
+            }
+        }
+        walk.outcome = merge() ?? .finished
+        return walk
+    }
+
+    /// An online-only folder or file: its contents aren't on this Mac (`SF_DATALESS`). A plain `lstat`, which
+    /// never fetches anything.
+    private static func isDataless(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && info.st_flags & UInt32(SF_DATALESS) != 0
+    }
+
+    private static func isGone(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSCocoaErrorDomain, [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(ns.code) { return true }
+        return ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOENT)
     }
 
     /// Uploads seen to finish per account since launch (seen waiting or uploading, then in the cloud), for
@@ -426,7 +688,8 @@ final class UploadTracker: @unchecked Sendable {
         return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : text
     }
 
-    private enum Outcome {
+    /// Where File Provider says a file is. Internal (not private) so tests can give made-up answers.
+    enum Outcome {
         case pending(State)
         /// In the cloud now.
         case uploaded
@@ -434,7 +697,7 @@ final class UploadTracker: @unchecked Sendable {
         case done
     }
 
-    private static func inspect(_ path: String) -> Outcome {
+    static func inspect(_ path: String) -> Outcome {
         guard FileManager.default.fileExists(atPath: path) else { return .done }
         let url = URL(fileURLWithPath: path)
         guard let values = try? url.resourceValues(forKeys: keys) else { return .pending(.unchecked) }   // try again later
@@ -463,11 +726,14 @@ final class UploadTracker: @unchecked Sendable {
         lock.lock()
         let pendingData = dirty ? try? JSONEncoder().encode(candidates) : nil
         let completedData = completedDirty ? try? JSONEncoder().encode(completed) : nil
+        let openGaps = gapsDirty ? gaps.mapValues(\.since) : nil
         let wrotePending = dirty, wroteCompleted = completedDirty
         dirty = false
         completedDirty = false
+        gapsDirty = false
         lock.unlock()
         if wrotePending { defaults.set(pendingData, forKey: pendingKey) }
         if wroteCompleted { defaults.set(completedData, forKey: completedKey) }
+        if let openGaps { defaults.set(openGaps, forKey: gapsKey) }
     }
 }

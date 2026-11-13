@@ -84,7 +84,7 @@ _Built November 13, 2026, in its own worktree (branch `claude/a4-legend-8be7c5`,
 - `ProviderReport.every`: how often a fresh one comes. With `timed`, it decides `isOld(now:)` (past `every + grace`, where `grace` is 15 minutes). Any new timed report must set `every`, or it can never go old.
 - The merge (`Collector.status`) copies the reason into `AccountStatus.reason`, and fills `age`, `isOld` and `lastReported`. Its own provider-neutral reasons live in `Reasons.swift`: unrecognized icon words, the coverage gap, not watching yet, a future date, and "Nothing is waiting to upload.". That last one is added to a "can't tell" reason when tracking is complete and nothing is pending, so a grey row under "Safe to close the lid" makes sense.
 - `source` keeps its clock time ("OneDrive report, 1:45 PM") and stays free of the age, so the debug log doesn't record a change every minute. The age lives in `detail`.
-- `UploadSummary.coverageGapUntil` gives the gap's end; the gap's start is that minus 15 minutes.
+- `UploadSummary.coverageGapSince` gives the gap's start, and `coverageCheck` says what ends it: the tracker's re-check, under way or failed with a retry time. (These replaced `coverageGapUntil` on November 13, when the 15-minute timer went.)
 
 **The reasons as shipped:**
 
@@ -102,7 +102,7 @@ _Built November 13, 2026, in its own worktree (branch `claude/a4-legend-8be7c5`,
 | iCloud, check failed | "iCloud didn't answer the 2:45 PM check. Velum tries again at 2:55 PM." |
 | iCloud, old | "iCloud's last answer, at 2:15 PM, is 40 minutes old; it hasn't answered since. …" The "hasn't answered" part appears only after a failed check, since after sleep none may have run. |
 | Google Drive, queue unreadable | "Velum can't read Google Drive's queue on this version. Per-file status from macOS still works." |
-| Coverage gap (any service) | "Velum may have missed changes here around 1:25 PM. Uploads from before then haven't been verified." It shows under green rows too, because the lid line blames that account. |
+| Coverage gap (any service) | "Velum may have missed changes here around 1:25 PM, so it's re-checking these folders before it vouches for them again." If the re-check can't finish: "… and couldn't re-check these folders: they hold more than 100,000 files. It tries again at 1:55 PM." It shows under green rows too, because the lid line blames that account. (Wording changed November 13, with the re-check.) |
 | Not watching yet | "Velum has just started watching this account and can't vouch for it yet." |
 | Future-dated report | "The last OneDrive report is dated 3:45 AM, later than this Mac's clock. Velum waits for the next one." |
 
@@ -137,7 +137,7 @@ Six older expectations changed with the wording: "No status yet", "Status unknow
 - The ⓘ, the ••• item, Back and Esc were not clicked in the real menu bar panel; only renders and tests cover them.
 
 **Follow-ups:**
-- **The coverage gap ends on a timer** (Codex's catch). `UploadTracker` clears a gap 15 minutes after the last dropped event without re-checking the files it may have missed. The lid line can therefore return to "safe" with a missed change unverified. The reason no longer promises when Velum can vouch again; a reconciling scan of the gap's folders is the real fix (C1/A1 territory).
+- **Done November 13: the coverage gap ended on a timer** (Codex's catch). `UploadTracker` clears a gap 15 minutes after the last dropped event without re-checking the files it may have missed. The lid line can therefore return to "safe" with a missed change unverified. The reason no longer promises when Velum can vouch again; a reconciling scan of the gap's folders is the real fix (C1/A1 territory). Now built: a gap ends only when a re-check of the account's folders finishes (see C1's "Gaps").
 - **iCloud full storage sets no `storageFull`,** so it gets no storage alert, unlike Google Drive (P1).
 - **A3 and A7 merge notes:**
   - `AccountRow` was restructured: the top line, plus a `lines` block under the buttons.

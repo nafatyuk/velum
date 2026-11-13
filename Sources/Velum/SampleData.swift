@@ -59,7 +59,8 @@ enum SampleData {
             paused.reason = OneDriveProvider.reason(for: paused, code: 65536, now: now)
             personalEvidence.report = paused
             iCloudUploads = gap
-            iCloudUploads.coverageGapUntil = now.addingTimeInterval(9 * 60)
+            iCloudUploads.coverageGapSince = now.addingTimeInterval(-6 * 60)
+            iCloudUploads.coverageCheck = .checking
         default:
             break
         }

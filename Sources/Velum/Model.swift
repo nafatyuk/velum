@@ -329,7 +329,7 @@ final class Collector: @unchecked Sendable {
             reason = [reason, config.provider.isBeta ? GenericText.nothingWaiting : Reasons.nothingWaiting].compactMap { $0 }.joined(separator: " ")
         }
         if account.running, watchingUploads, uploads?.coverageGap == true {
-            reason = [reason, Reasons.coverageGap(until: uploads?.coverageGapUntil)].compactMap { $0 }.joined(separator: " ")
+            reason = [reason, Reasons.coverageGap(since: uploads?.coverageGapSince, check: uploads?.coverageCheck)].compactMap { $0 }.joined(separator: " ")
         } else if account.running, !watchingUploads {
             // The lid line can't vouch for this account either; say why here too.
             reason = [reason, Reasons.notWatchingYet].compactMap { $0 }.joined(separator: " ")

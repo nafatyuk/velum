@@ -36,12 +36,25 @@ enum Reasons {
     }
 
     /// FSEvents dropped events, or Velum was off too long to replay them, so "nothing pending" isn't proof.
-    /// The tracker ends a gap on a 15-minute timer without re-checking the files it may have missed, so this
-    /// promises no time when Velum can vouch again (Codex's catch; reconciling is a follow-up).
-    static func coverageGap(until: Date?) -> String {
-        guard let until else { return "Velum may have missed changes here. Earlier uploads haven’t been verified." }
-        let since = until.addingTimeInterval(-15 * 60)
-        return "Velum may have missed changes here around \(RelTime.clock(since)). Uploads from before then haven’t been verified."
+    /// It says what ends the gap: the tracker's re-check of the account's folders, never a timer. While the
+    /// re-check runs it promises no time, because how long it takes depends on how many files there are.
+    static func coverageGap(since: Date?, check: CoverageCheck?) -> String {
+        let missed = "Velum may have missed changes here" + (since.map { " around \(RelTime.clock($0))" } ?? "")
+        switch check {
+        case .failed(let why, let retry):
+            return "\(missed) and couldn’t re-check these folders: \(recheckFailure(why)). It tries again at \(RelTime.clock(retry))."
+        case .checking, nil:
+            return "\(missed), so it’s re-checking these folders before it vouches for them again."
+        }
+    }
+
+    /// Why a re-check couldn't finish, as the end of a sentence (the reason line and the debug log).
+    static func recheckFailure(_ why: RecheckFailure) -> String {
+        switch why {
+        case .tooManyFiles(let limit): "they hold more than \(limit.formatted()) files"
+        case .tooManyPending(let limit): "more than \(limit.formatted()) files are waiting to upload"
+        case .unreadable: "a folder couldn’t be read"
+        }
     }
 
     /// The summary's line for accounts Velum can't tell about: "Can't tell for Personal", "… for Personal or

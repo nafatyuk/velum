@@ -238,18 +238,27 @@ private func clock(_ offset: TimeInterval) -> String { RelTime.clock(Fixture.now
     }
 
     @Test func coverageGap() {
-        let until = Fixture.now.addingTimeInterval(9 * minute)
-        // No time is promised for vouching again: the tracker ends a gap on a timer, without re-checking.
-        #expect(Reasons.coverageGap(until: until)
-                == "Velum may have missed changes here around \(clock(-6 * minute)). Uploads from before then haven’t been verified.")
-        #expect(Reasons.coverageGap(until: nil) == "Velum may have missed changes here. Earlier uploads haven’t been verified.")
+        let since = Fixture.now.addingTimeInterval(-6 * minute)
+        // It says what ends the gap: the re-check, not a time (how long it takes depends on the files).
+        #expect(Reasons.coverageGap(since: since, check: .checking)
+                == "Velum may have missed changes here around \(clock(-6 * minute)), so it’s re-checking these folders before it vouches for them again.")
+        #expect(Reasons.coverageGap(since: nil, check: nil)
+                == "Velum may have missed changes here, so it’s re-checking these folders before it vouches for them again.")
+        // A re-check that couldn't finish says why, and when it runs again.
+        let retry = Fixture.now.addingTimeInterval(30 * minute)
+        #expect(Reasons.coverageGap(since: since, check: .failed(.tooManyFiles(100_000), retry: retry))
+                == "Velum may have missed changes here around \(clock(-6 * minute)) and couldn’t re-check these folders: they hold more than \(100_000.formatted()) files. It tries again at \(clock(30 * minute)).")
+        #expect(Reasons.coverageGap(since: since, check: .failed(.unreadable, retry: retry))
+                == "Velum may have missed changes here around \(clock(-6 * minute)) and couldn’t re-check these folders: a folder couldn’t be read. It tries again at \(clock(30 * minute)).")
+        #expect(Reasons.recheckFailure(.tooManyPending(5000)) == "more than \(5000.formatted()) files are waiting to upload")
         // A gap under a green row explains the lid line; the row keeps its source and age.
         var gap = UploadSummary()
         gap.coverageGap = true
-        gap.coverageGapUntil = until
+        gap.coverageGapSince = since
+        gap.coverageCheck = .checking
         let s = Fixture.status(Fixture.evidence(personal, report: oneDriveReport(.ok, "Up to date", ago: 10 * minute)), uploads: gap)
         #expect(s.state == .ok)
-        #expect(s.reason == Reasons.coverageGap(until: until))
+        #expect(s.reason == Reasons.coverageGap(since: since, check: .checking))
         #expect(s.detail == "OneDrive report 10 min ago")
     }
 
@@ -261,7 +270,8 @@ private func clock(_ offset: TimeInterval) -> String { RelTime.clock(Fixture.now
                 == "No report. Velum has just started watching this account and can’t vouch for it yet.")
         var gap = UploadSummary()
         gap.coverageGap = true
-        #expect(Fixture.status(e, uploads: gap).reason == "No report. Velum may have missed changes here. Earlier uploads haven’t been verified.")
+        #expect(Fixture.status(e, uploads: gap).reason
+                == "No report. Velum may have missed changes here, so it’s re-checking these folders before it vouches for them again.")
         var failed = UploadSummary()
         failed.failed = ["a.txt: nope"]
         #expect(Fixture.status(e, uploads: failed).reason == nil)   // the failure itself is the status
