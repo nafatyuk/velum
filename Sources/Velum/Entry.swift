@@ -7,6 +7,7 @@ struct VelumApp: App {
 
     init() {
         GoogleSignInDebug.runIfAsked()
+        if CommandLine.arguments.contains("--dump"), CommandLine.arguments.contains("--redact") { DiagnosticsReport.printFromTerminal(); exit(0) }   // card S2
         if CommandLine.arguments.contains("--dump") {
             DebugDump.run()
             exit(0)
@@ -75,7 +76,7 @@ enum DebugDump {
     }
 
     @MainActor
-    private static func collectOnce() -> (Snapshot, [String: TransferInfo], UploadsSnapshot) {
+    static func collectOnce() -> (Snapshot, [String: TransferInfo], UploadsSnapshot) {
         let collector = Collector()
         let first = collector.collect(force: true)
         let roots = Dictionary(first.accounts.map { ($0.config.key, $0.config.watchRoots) }, uniquingKeysWith: { a, _ in a })

@@ -65,6 +65,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         account.report = report
         if config.watchRoots.count > 1 { account.notes.append("Desktop & Documents included") }
         var evidence = ProviderEvidence(present: true, clientRunning: nil)
+        account.storageSource = quota == nil ? "none yet (brctl quota hasn’t answered)" : "brctl quota"   // S2
         if let quota {
             if quota <= 0 {
                 account.notes.append("iCloud storage is full")
