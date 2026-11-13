@@ -338,7 +338,7 @@ import Testing
     }
 
     @Test func emailCaseDoesNotMatter() async {
-        let shouty = Self.json(["user": ["emailAddress": "Someone.Else@Gmail.com"], "storageQuota": ["usage": "7"]])
+        let shouty = Self.json(["user": ["emailAddress": "Someone.Else@Example.com"], "storageQuota": ["usage": "7"]])
         let (storage, _) = Self.make(Self.google(about: shouty))
         await storage.fetch(Self.email)
         #expect(storage.peek(Self.email)?.used == 7)
