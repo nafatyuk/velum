@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.banner.show(title: title, body: body, isProblem: isProblem)
         }
         store.onRefresh = { snapshot in notifier.update(snapshot, enabled: store.notificationsEnabled) }
+        SleepGuard.shared.start(store: store, notifier: notifier)   // A5: a note after sleep or at shutdown when files weren't in the cloud
         if store.notificationsEnabled { notifier.requestPermission() }
 
         LoginItem.enableOnFirstLaunch()

@@ -47,6 +47,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     var userStopped: [ProviderID: Date] = [:]
     /// One alert per client release that changed what Velum reads (card A7, Compatibility.swift).
     var compatibility = CompatibilityAlerts()
+    /// What the sleep guard's note covers (card A5), set before each update: a stuck or queued alert it covers,
+    /// and that alert's "resolved", wait while it does, so the user isn't told twice.
+    var sleepGuard = SleepGuardCover()
     var onOpen: (() -> Void)?
 
     /// Whether macOS lets Velum post notifications. It only does for apps signed with an Apple-issued
@@ -128,7 +131,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
         for (key, problem) in current {
             if var episode = episodes[key], episode.kind == problem.kind {
-                if !episode.notified, now.timeIntervalSince(episode.firstSeen) >= settle {
+                if !episode.notified, now.timeIntervalSince(episode.firstSeen) >= settle, !heldBySleepGuard(key, problem.kind, snapshot) {
                     if enabled { post(key, title: problem.title, body: problem.body, sound: true, logged: problem.logged) }
                     episode.notified = true   // also when disabled: switching on later shouldn't replay old news
                 }
@@ -142,7 +145,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let held = Set(snapshot.accounts.filter { $0.isOld && $0.state == .error }.map(\.id))
         for (key, episode) in episodes where current[key] == nil && !held.contains(key) {
             episodes[key] = nil
-            guard episode.notified, enabled else { continue }
+            guard episode.notified, enabled, !heldBySleepGuard(key, episode.kind, nil) else { continue }
             // A service or account that was removed (uninstalled, signed out) isn't "resolved": it's gone.
             let accountKey = key.hasPrefix("storage:") ? String(key.dropFirst("storage:".count)) : key
             let stillThere = ProviderID(rawValue: key).map { id in snapshot.providers.contains { $0.id == id } }
@@ -167,6 +170,27 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if sound { content.sound = .default }
         // One identifier per account, so a "resolved" note replaces the problem it answers.
         center.add(UNNotificationRequest(identifier: "velum.\(key)", content: content, trigger: nil))
+    }
+
+    /// The sleep guard's notes (card A5), through the same path as every alert. Key "sleep", so its follow-up
+    /// replaces its problem note.
+    func note(_ key: String, title: String, body: String, isProblem: Bool, logged: String) {
+        post(key, title: title, body: body, sound: isProblem, logged: logged)
+    }
+
+    /// A queued alert waits while the guard follows that account's queue. A stuck alert waits while every file
+    /// the account is stuck on is one the guard follows (`snapshot` nil: the "resolved" of one, while it follows
+    /// files in that account).
+    private func heldBySleepGuard(_ key: String, _ kind: Kind, _ snapshot: Snapshot?) -> Bool {
+        switch kind {
+        case .queued: return sleepGuard.queues.contains(key)
+        case .stuck:
+            guard sleepGuard.accounts.contains(key) else { return false }
+            guard let snapshot else { return true }
+            let stuck = snapshot.stuck.files.filter { $0.account == key }
+            return stuck.count == (snapshot.stuck.perAccount[key] ?? 0) && stuck.allSatisfy { sleepGuard.files.contains($0.path) }
+        default: return false
+        }
     }
 
     private static func files(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
