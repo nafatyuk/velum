@@ -25,7 +25,7 @@ Each card is one session's work. Paste a card's "Brief" into a new session; it s
 
 ### November 13, 2026, overnight
 
-**10 of 25 cards done, and G1 partly.** While you slept, wave 2's three code cards were built side by side in their own worktrees, then merged into `main`:
+**13 of 25 cards done, and G1 partly.** While you slept, wave 2's three code cards were built side by side in their own worktrees, then merged into `main`:
 - A3, stuck files by name (merged at `22efa3d`);
 - A4, what each light means and how old it is (`688874b`);
 - A7, noticing when a sync app changes underneath (merged at `f07c78d`).
@@ -34,7 +34,7 @@ Two smaller changes came from what you asked on November 12, outside any card:
 - **An opt-in debug log** (••• → Debug Logging, `a79be34`). OneDrive's self-update to 26.212 that evening left nothing to look back at; now status changes, alerts and failed checks can be written to `~/Library/Logs/Velum/Velum.log`.
 - **The Google sign-in item always shows** (`fe0b20e`), so there is a way back in after signing out.
 
-Wave 3 is running now: T1, A5, A6 and S2, each in its own worktree; G2, the adapter guide, is merged. Their rows below change as they merge. The overnight decisions are in [Decisions the user makes](#decisions-the-user-makes), each marked "decided overnight" and yours to reverse.
+Wave 3 was built overnight, each card in its own worktree: G2 (the adapter guide), T1 (`velumctl`), A5 (the sleep and shutdown note) and S2 (the redacted diagnostics export) are merged; A6 (sync history) is finishing. The overnight decisions are in [Decisions the user makes](#decisions-the-user-makes), each marked "decided overnight" and yours to reverse.
 
 ### November 12, 2026
 
@@ -127,10 +127,10 @@ The campaign follows the memo's three horizons.
 |---|---|---|---|---|
 | [P1 · iCloud Drive](cards/P1-icloud-drive.md) | iCloud Drive as adapter two: per-file flags plus `brctl status`, parsed defensively. The lid line, alerts and stuck files work for it | C2 | C3, T1, A5, A6, S2 | **done** November 12 (pulled forward at your request) |
 | [C3 · Any CloudStorage folder (beta)](cards/C3-any-cloudstorage-folder.md) | Every live root under `~/Library/CloudStorage` (Dropbox, Google Drive streaming, Box, Proton, Nextcloud…) at basic fidelity, labelled beta, leftover folders ignored | C2 | P1, T1, A5, A6, S2 | planned |
-| [T1 · `velumctl`](cards/T1-velumctl.md) | A command-line tool inside the app: `velumctl status`, `lid` and `pending`, as text or `--json`, with exit codes for scripts | C2 | P1, C3, A5, A6, S2 | planned |
-| [A5 · A warning before sleep or shutdown](cards/A5-sleep-and-shutdown-guard.md) | Sleep, log out or shut down with uploads pending, and Velum says so; it never blocks | C2, A1, A2 | P1, C3, T1, A6, S2 | planned |
+| [T1 · `velumctl`](cards/T1-velumctl.md) | A command-line tool inside the app: `velumctl status`, `lid` and `pending`, as text or `--json`, with exit codes for scripts | C2 | P1, C3, A5, A6, S2 | **done** November 13 (merged at `d776db1`; `docs/velumctl.md`) |
+| [A5 · A warning before sleep or shutdown](cards/A5-sleep-and-shutdown-guard.md) | Sleep, log out or shut down with uploads pending, and Velum says so; it never blocks | C2, A1, A2 | P1, C3, T1, A6, S2 | **done** November 13 (merged at `12de79e`); the lid-close check waits for you |
 | [A6 · Sync history per account](cards/A6-sync-history.md) | A small sparkline per account over the last days (uploads, waits, failures), so silent multi-day stalls become visible | C2 | P1, C3, T1, A5, S2 | planned |
-| [S2 · Diagnostics export, redacted](cards/S2-diagnostics-export.md) | One menu item, and `Velum --dump --redact`, that writes a report with names, emails, folders and file names replaced, ready to attach to an issue | C2 | P1, C3, T1, A5, A6 | planned |
+| [S2 · Diagnostics export, redacted](cards/S2-diagnostics-export.md) | One menu item, and `Velum --dump --redact`, that writes a report with names, emails, folders and file names replaced, ready to attach to an issue | C2 | P1, C3, T1, A5, A6 | **done** November 13 (merged at `f2135ef`) |
 | [S1 · A guided first run](cards/S1-guided-first-run.md) | On first launch, Velum shows which clouds it found and which vendor icons still show. It deep-links to System Settings → Menu Bar and explains where its own icon landed | C3, P1 | G2, R3 | planned |
 | [G2 · An adapter guide](cards/G2-adapter-guide.md) | `docs/adapters.md`: the protocol, OneDrive, iCloud Drive and Google Drive as worked examples, the trust rules, and a test checklist a contributor can follow | P1, P3 (done; C3 optional) | S1, R3 | **done** November 13 (`docs/adapters.md`, `CONTRIBUTING.md`) |
 | [R3 · A Homebrew tap](cards/R3-homebrew-tap.md) | `brew install --cask nafatyuk/tap/velum` from your own tap; the main Homebrew cask later | R2 (the repo is already public) | S1, G2 | planned |
@@ -231,7 +231,7 @@ flowchart LR
 
   classDef done fill:#e6f4ea,stroke:#34a853
   classDef gate stroke-dasharray: 5 5
-  class C1,A1,A2,C2,P1,P3,A3,A4,A7,G2 done
+  class C1,A1,A2,C2,P1,P3,A3,A4,A7,G2,T1,A5,S2 done
   class ICON,ENROL,TESTER,XCODE gate
 ```
 
@@ -260,7 +260,7 @@ Collected here so they can be made in one sitting. Each card repeats its own.
 | R2 | Where the update feed lives | On the existing `gh-pages` site (`nafatyuk.github.io/velum/appcast.xml`), so Google's links keep working |
 | A2 | Once system notifications work: keep the "resolved" follow-up, or errors only (the consultant's default) | Keep as built: each problem, then one "resolved" note |
 | A3 | How long before a file counts as stuck | **Decided overnight:** 10 minutes, the suggested value; the defaults key `stuckAfterSeconds` changes it |
-| A5 | Warn only, or also hold off sleep briefly while uploads finish | Warn only; never hold up sleep or shutdown |
+| A5 | Warn only, or also hold off sleep briefly while uploads finish | **Decided overnight:** warn only, the suggested answer; macOS 27 gives an app no way to delay shutdown anyway |
 | A6 | How much history to keep | 30 days, on this Mac only |
 | C3 | Show the generic tier's folders by default, or behind a switch | Shown, each labelled beta |
 | G1 | The app icon | On hold, your call |
