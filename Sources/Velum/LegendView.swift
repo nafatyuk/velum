@@ -122,14 +122,14 @@ struct LegendView: View {
     /// When a report counts as old, in minutes, from the same numbers the merge uses.
     static func oldAfter(_ every: TimeInterval) -> Int { Int((every + ProviderReport.grace) / 60) }
 
-    static let oldRule = "An old report is never green. The lid line never uses reports: only live file tracking, its coverage, running apps and live queues."
+    static let oldRule = "An old report is never green, except OneDrive’s “Up to date” while live tracking shows nothing waiting. The lid line never uses reports: only live file tracking, its coverage, running apps and live queues."
 
     static func sourceLines(for services: [ProviderID]) -> [String] {
         var lines = ["macOS, live: files waiting, uploading or failing, in every service. The lid line trusts only live evidence, never a periodic report."]
         for service in services {
             switch service {
             case .oneDrive:
-                lines.append("OneDrive: its own icon text when you’ve turned that on (live); otherwise its report, written about every hour while this Mac is awake. Old after \(oldAfter(OneDriveProvider.reportEvery)) minutes.")
+                lines.append("OneDrive: its own icon text when you’ve turned that on (live); otherwise its report, written about every hour while this Mac is awake, less often when nothing changes. Old after \(oldAfter(OneDriveProvider.reportEvery)) minutes, or \(Int(OneDriveProvider.quietFor / 3600)) hours while nothing is waiting to upload.")
             case .iCloud:
                 lines.append("iCloud: a status check Velum runs every \(Int(ICloudProvider.checkInterval / 60)) minutes. Old after \(oldAfter(ICloudProvider.checkInterval)) minutes.")
             case .googleDrive:

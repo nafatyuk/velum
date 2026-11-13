@@ -126,6 +126,10 @@ struct ProviderReport: Equatable {
     var every: TimeInterval?
     /// Why this report leaves the status unknown or old, and what would end it, in the provider's words.
     var reason: String?
+    /// How long a healthy report still counts while Velum's live upload tracking vouches for the account
+    /// (watching, no gap, nothing pending). Found live November 13: a quiet OneDrive account can go hours
+    /// without a report. nil: `every` alone decides.
+    var quietFor: TimeInterval?
 
     static let grace: TimeInterval = 15 * 60
 
@@ -134,6 +138,13 @@ struct ProviderReport: Equatable {
     func isOld(now: Date) -> Bool {
         guard timed, let every else { return false }
         return now.timeIntervalSince(written) > every + Self.grace
+    }
+
+    /// A healthy report past its time but within `quietFor`. It counts only while live tracking shows
+    /// nothing pending; the status merge checks that.
+    func isQuiet(now: Date) -> Bool {
+        guard state == .ok, let quietFor, isOld(now: now) else { return false }
+        return now.timeIntervalSince(written) <= quietFor
     }
 
     /// When the next one is due, for reason lines ("The next is due by 2:45 PM").

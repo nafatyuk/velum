@@ -268,7 +268,11 @@ final class Collector: @unchecked Sendable {
             source = "Live from macOS"
             working = true
         } else if let report {
-            old = !usable
+            // With live coverage, Velum sees every local change reach the cloud. Each pending kind of change
+            // has its own branch above, so nothing is pending here.
+            let liveCoverage = watchingUploads && uploads?.coverageGap != true
+            // A quiet account: its last "Up to date" still counts, up to `quietFor` (OneDrive, November 13).
+            old = !usable && !(liveCoverage && report.isQuiet(now: now))
             // Only live evidence (Google Drive's queue) may hold the lid at "still syncing"; a periodic report
             // never decides the lid line, fresh or old.
             working = !report.timed && report.state == .syncing
@@ -297,7 +301,6 @@ final class Collector: @unchecked Sendable {
                 }
             } else if report.state == .ok {
                 // A healthy report plus, when Velum is watching with no gaps, nothing pending right now.
-                let liveCoverage = watchingUploads && uploads?.coverageGap != true
                 if liveCoverage {
                     source = "Nothing pending · \(report.source)"
                     shown = "Nothing pending · \(shown)"

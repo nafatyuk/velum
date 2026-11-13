@@ -49,7 +49,7 @@ private func clock(_ offset: TimeInterval) -> String { RelTime.clock(Fixture.now
         #expect(s.state == .unknown)
         #expect(s.isOld)
         #expect(s.headline == "Can’t tell · last report is old")
-        #expect(s.reason == "OneDrive last reported “Up to date” at \(clock(-3 * hour)), 3 hours ago. It reports about hourly while it runs and this Mac is awake. Nothing is waiting to upload.")
+        #expect(s.reason == "OneDrive last reported “Up to date” at \(clock(-3 * hour)), 3 hours ago. It reports about hourly while it runs and this Mac is awake, less often when nothing changes. Nothing is waiting to upload.")
         // The reason names the source and its time, so the source line goes; "Nothing pending" isn't claimed.
         #expect(s.detail.isEmpty)
         #expect(!s.source.hasPrefix("Nothing pending"))
@@ -363,7 +363,7 @@ private func clock(_ offset: TimeInterval) -> String { RelTime.clock(Fixture.now
     @Test func sourcesMatchTheMergesNumbers() {
         let lines = LegendView.sourceLines(for: [.oneDrive, .iCloud, .googleDrive])
         #expect(lines.count == 4)
-        #expect(lines[1].hasSuffix("Old after 75 minutes."))
+        #expect(lines[1].hasSuffix("Old after 75 minutes, or 12 hours while nothing is waiting to upload."))
         #expect(lines[2] == "iCloud: a status check Velum runs every 10 minutes. Old after 25 minutes.")
         #expect(lines[3].contains("If Velum can’t read the queue, the row says so."))
         // Only the services on this Mac.

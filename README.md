@@ -116,6 +116,8 @@ Each account's status line names its source:
 - **Nothing pending · OneDrive report 12 min ago.** "Up to date" means nothing is moving or waiting right
   now and OneDrive's own hourly report (`SyncDiagnostics.log`) says it's healthy. Once a report is over
   75 minutes old it's old: the row turns grey and says "Can't tell · last report is old", never green.
+  One exception: OneDrive reports less often when nothing changes, so its last "Up to date" stays green
+  for up to 12 hours while Velum's live tracking shows nothing waiting, with the report's real age.
 - **OneDrive report 2 hr ago.** Account-wide states such as Paused or Sync issue come only from that hourly
   report, so they can be up to an hour old. An old one reads "Last reported: Paused · old" and raises no alert.
 - **Google storage** comes from Google Drive's own record of your account on this Mac. Velum shows it

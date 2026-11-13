@@ -154,6 +154,7 @@ changes by itself.
 | `headline` | The row's words: "Up to date", "Paused", "Sync issue", "Can’t tell" |
 | `timed` | `true` for a status written now and then (OneDrive's hourly report, Velum's 10-minute `brctl` check); `false` for live evidence that has no time of its own (Google Drive's queue) |
 | `every` | For timed reports: how often a fresh one comes. Past `every` plus 15 minutes the report is old, and old is never green. **A timed report without `every` can never go old: always set it** |
+| `quietFor` | Optional. How long a healthy report still counts past `every` while Velum's live tracking vouches for the account (watching, no gap, nothing pending). Set it only when your service writes less often while idle, as OneDrive does |
 | `reason` | Why this report leaves the status unknown or old, in your service's words |
 
 ## How Velum merges your evidence
@@ -167,7 +168,7 @@ the first rule that applies wins:
 4. **Files moving**, from macOS: "Uploading 3 files", "Downloading 1 file", "Syncing 4 files".
 5. **Files waiting**, from macOS: "Waiting to upload 2 files", or "Paused, 2 files waiting" when a usable report says paused.
 6. **Progress with no direction**, from macOS: "Syncing changes".
-7. **Your report.** It keeps its own headline. A timed report that is old, or dated more than five minutes in the future, is never green. A healthy report's source gains "Nothing pending · " when Velum's own watching has no gaps.
+7. **Your report.** It keeps its own headline. A timed report that is old, or dated more than five minutes in the future, is never green. The one exception is a healthy report within its `quietFor` while Velum's live tracking shows nothing pending. A healthy report's source gains "Nothing pending · " when Velum's own watching has no gaps.
 8. **Nothing at all:** "Can’t tell yet" (or your `unknownHeadline`), with your `unknownReason`.
 
 Then, if A7's checks dropped some of your evidence, the account's `compatibilityNote` leads the reason line.
@@ -377,7 +378,7 @@ Read them in this order. Each shows a different kind of service.
 |---|---|---|
 | The `libraryScope` lines in each account's `.ini` under `~/Library/Application Support/OneDrive/settings/<slot>/` | Which accounts exist, their folders and web addresses | OneDrive's own record. The folder must also exist, and it is dropped on a clear "not live" (signed-out accounts leave settings behind) |
 | Which settings files each OneDrive process holds open | Which process serves which account, and whether it runs | One process per account. After an update OneDrive may not hold its files yet, so there is a two-minute grace before the row says it can't tell |
-| `~/Library/Logs/OneDrive/<slot>/SyncDiagnostics.log` | The account-wide report: paused, sync issue, healthy | Written about hourly, so it is a timed report with `every` of one hour: old after 75 minutes, and never green once old. Five known codes; any other reads unknown |
+| `~/Library/Logs/OneDrive/<slot>/SyncDiagnostics.log` | The account-wide report: paused, sync issue, healthy | Written about hourly, so it is a timed report with `every` of one hour: old after 75 minutes. A quiet account can go hours without one, so a healthy report keeps `quietFor` of 12 hours while live tracking shows nothing pending. Five known codes; any other reads unknown |
 | `UXDatabase.db` → `history_list` | Recent activity (`keepsOwnHistory` true) | Item types Velum doesn't know are left out, never shown as "Synced" |
 | The text on OneDrive's own menu bar icons, through Accessibility, opt-in | `exactStatus`: "Uploading file (58%)", "Paused" | Live and exact, but only while OneDrive's icons exist and the user has allowed Accessibility. Everything else works without it. It predates [rule 6](#rule-6-live-evidence-comes-before-reports) |
 

@@ -82,12 +82,18 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
     /// How often OneDrive writes its report while it runs and the Mac is awake.
     static let reportEvery: TimeInterval = 60 * 60
 
+    /// How long a healthy report still counts while Velum sees nothing pending. Found live November 13:
+    /// a personal account wrote no report for 4½ hours while it ran, idle, on an awake Mac. A work account
+    /// on the same Mac kept to the hour. 12 hours is a judgment, not a measured figure.
+    static let quietFor: TimeInterval = 12 * 60 * 60
+
     /// OneDrive's hourly report as an account-wide status. The codes are community-documented; Microsoft
     /// doesn't publish them. A code Velum doesn't know reads as unknown, never as healthy.
     static func report(from diag: Diagnostics?, now: Date = Date()) -> ProviderReport? {
         guard let diag, let code = diag.progressState else { return nil }
         var report = ProviderReport(label: "OneDrive report", written: diag.written, state: .unknown, headline: "Can’t tell",
                                     every: reportEvery)
+        report.quietFor = quietFor
         switch code {
         case 65536: report.state = .paused; report.headline = "Paused"
         case 8194: report.state = .offline; report.headline = "Not syncing"
@@ -106,7 +112,7 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
         let due = RelTime.clock(report.written.addingTimeInterval(reportEvery))
         if report.isOld(now: now) {
             let age = Reasons.duration(now.timeIntervalSince(report.written))
-            let hourly = "It reports about hourly while it runs and this Mac is awake."
+            let hourly = "It reports about hourly while it runs and this Mac is awake, less often when nothing changes."
             if report.state == .ok {
                 return "OneDrive last reported “\(report.headline)” at \(RelTime.clock(report.written)), \(age) ago. \(hourly)"
             }
