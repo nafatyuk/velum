@@ -130,7 +130,13 @@ What it found, and what changed:
   - Recent's hover text for uploads Velum recorded says "iCloud entries" for Google Drive too (`PanelView.swift`, `helpText`).
   - The legend's Recent line joins three or more services with " and " each time (`LegendView.notesLines`; `CompatibilityText.list` does it properly).
   - iCloud sets no `storageFull`, so a full iCloud raises no alert (already A4's follow-up).
-- **Stale test expectations on `main`.** Four expectations still use headlines A4 retired: "No status yet" (`GoogleDriveTests.swift:137`, `CompatibilityTests.swift:177`, `:373`) and "Status unknown" (`CompatibilityTests.swift:156`). The merge now says "Can’t tell yet" and "Can’t tell". The queued run of the whole suite will say whether `Scripts/test.sh` passes on `main`.
+- **Stale test expectations at `f07c78d`.** Four expectations still used headlines A4 retired: "No status yet" (`GoogleDriveTests.swift:137`, `CompatibilityTests.swift:177`, `:373`) and "Status unknown" (`CompatibilityTests.swift:156`). The wave 2 queue run failed on exactly those four (164 tests, 4 issues), so its chained install didn't run. The main session fixed them on `main` at `3c3e311`.
+
+### Added at the supervisor's request: known variants are not changes
+
+Found live on November 13: now and then OneDrive overwrites an account's `SyncDiagnostics.log` with a "Sync Verification" pass, which has no `SyncProgressState` line. A7 took it for a format change, and the installed app showed a false "can't read part of OneDrive" alert. The fix is on `main` at `ff5fe68`: `Diagnostics.isVerification`, `OneDriveProvider.keepingStatus` (keeps the last real report, with its own date), the compat check recording the pass as fine, and `VerificationPassTests.swift`.
+
+The guide's rule 8 now has a short paragraph and the pull-request checklist one line: an undocumented file can have more than one legitimate shape, so find out whether a shape is a known variant before calling it a change. The guide cites those names, which exist once this branch is merged onto `main`.
 - **The roadmap README's G2 row** still says "planned". It was left alone so the parallel cards' rows merge cleanly; update it at merge.
 
 ### What changed since this card was written (November 12)

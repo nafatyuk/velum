@@ -275,6 +275,17 @@ with no limit shows "used" alone), which held to the byte on a real account. Any
 and the row shows no storage rather than a wrong number. Look for an equivalent in your service: two fields
 that must agree, a total that must match its parts, or a checksum.
 
+**An undocumented file can have more than one legitimate shape.** Now and then OneDrive overwrites an
+account's `SyncDiagnostics.log` with a "Sync Verification" pass: a folder-by-folder scan with no
+`SyncProgressState` line. A7 first took it for a format change, and the installed app raised a false "can't
+read part of OneDrive" alert. "Unknown" was the safe answer, but a false alarm still costs trust. So before
+you call a shape a change, find out whether it is a known variant: watch the file through days of normal
+use, not one sample. Then handle each variant you find the way OneDrive's fix does:
+- recognize it (`Diagnostics.isVerification`);
+- record it as fine in your checker;
+- keep the last real evidence with its own date, so it still goes old on time (`OneDriveProvider.keepingStatus`);
+- test all three, as `VerificationPassTests.swift` does.
+
 ### Rule 9: notice when the client changes underneath
 
 None of these files is a promise from the vendor, and clients update themselves overnight. Card A7 checks
@@ -396,8 +407,8 @@ Mirror mode keeps files outside File Provider and isn't covered.
 
 ## Adding a service, file by file
 
-Swift's exhaustive `switch` statements will point at the first six rows when you add a `ProviderID` case.
-The rest the compiler can't see.
+When you add a `ProviderID` case, Swift's exhaustive `switch` statements point at the first four rows (six
+switches in all). The rest the compiler can't see.
 
 | File | What you add |
 |---|---|
@@ -514,7 +525,7 @@ paths, account IDs, databases or logs. Tests use made-up data shaped like what y
 Every adapter passes this on a real Mac that uses the service, run by its maintainer. It is written from
 what the iCloud Drive and Google Drive adapters actually did, plus the stopped-app check from the
 stuck-files work. Steps marked *not yet run live* are ones no shipped adapter has recorded on a real Mac.
-The tests cover them; run them if you can. In your pull request, record each step as passed, failed or not
+Velum's tests cover the logic behind them; run them live if you can. In your pull request, record each step as passed, failed or not
 run, with times.
 
 **Ground rules.** A test file written into someone's synced folder needs their yes each time. Name it
@@ -597,7 +608,7 @@ To volunteer, open an issue naming the service, the client version and your macO
 - [ ] Anything you parse reads unknown output as unknown, never healthy, and is tested with garbage and empty input.
 - [ ] `unknownReason` is set whenever there is no report.
 - [ ] Optional data stays in `notes`, `trouble` and `storageFull`, and changes no row's state.
-- [ ] Undocumented formats pass a self-check before they're shown.
+- [ ] Undocumented formats pass a self-check before they're shown, and every known variant of a file (like OneDrive's verification pass) is recognized, not reported as a change.
 - [ ] A compatibility checker covers every internal you read; your adapter drops what a changed check covers; `testedVersions` and the README's Requirements agree.
 - [ ] Read-only: no writes to the client, no network, no credentials; `gather` doesn't block.
 - [ ] Synthetic fixtures only; nothing from a real account anywhere in the diff.
