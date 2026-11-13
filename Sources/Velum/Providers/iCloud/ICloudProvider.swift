@@ -67,6 +67,7 @@ final class ICloudProvider: SyncProvider, @unchecked Sendable {
         var evidence = ProviderEvidence(present: true, clientRunning: nil)
         account.storageSource = quota == nil ? "none yet (brctl quota hasn’t answered)" : "brctl quota"   // S2
         if let quota {
+            account.storage = StorageFigures(iCloudFree: quota, asOf: lastCheck)   // T1
             if quota <= 0 {
                 account.notes.append("iCloud storage is full")
                 account.notesNeedAttention = true    // orange, as the legend says (A4)

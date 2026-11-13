@@ -70,6 +70,8 @@ struct ProviderEvidence {
     var trouble: String?
     /// How the client's internals read against the tested versions (card A7).
     var compatibility: CompatibilityReport?
+    /// The service's own pause switch, where it has one Velum reads (Google Drive's); for the status file (T1).
+    var paused: Bool?
 }
 
 /// What a provider knows about one account, before the live File Provider evidence is merged in.
@@ -100,6 +102,8 @@ struct AccountEvidence {
     /// Why some of this account's evidence was dropped (card A7: "Can’t read OneDrive 27.0’s status report ·
     /// uploads are still tracked"). Also first in `notes`, so it shows today; card A4's reason line can use it.
     var compatibilityNote: String?
+    /// The storage behind the notes line, as figures with their source, for the status file (T1).
+    var storage: StorageFigures?
 }
 
 /// An account-wide status a provider writes or reports now and then (OneDrive's hourly diagnostics,

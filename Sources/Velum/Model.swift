@@ -69,6 +69,8 @@ struct AccountStatus: Identifiable, Equatable {
     var compatibilityNote: String?
     /// Where the storage figure in `notes` came from, for the diagnostics report (card S2).
     var storageSource: String?
+    /// The account's storage as figures, with their source, for the status file (T1).
+    var storage: StorageFigures?
 
     var id: String { config.key }
     var provider: ProviderID { config.provider }
@@ -95,6 +97,8 @@ struct ProviderStatus: Equatable {
     var trouble: String?
     /// How the client's internals read against the tested versions (card A7).
     var compatibility: CompatibilityReport?
+    /// The service's own pause switch, where Velum reads one (Google Drive); nil elsewhere (T1).
+    var paused: Bool?
 
     var isStopped: Bool { clientRunning == false }
 }
@@ -162,6 +166,7 @@ final class Collector: @unchecked Sendable {
             snapshot.providers.append(ProviderStatus(id: provider.id, clientRunning: evidence.clientRunning,
                                                      trouble: evidence.trouble))
             snapshot.providers[snapshot.providers.count - 1].compatibility = evidence.compatibility   // A7
+            snapshot.providers[snapshot.providers.count - 1].paused = evidence.paused   // T1
             if provider.id == .oneDrive {
                 snapshot.axTrusted = evidence.axTrusted
                 snapshot.liveItemsFound = evidence.liveItemsFound
@@ -338,6 +343,7 @@ final class Collector: @unchecked Sendable {
         status.storageFull = account.storageFull
         status.compatibilityNote = account.compatibilityNote   // A7
         status.storageSource = account.storageSource   // S2
+        status.storage = account.storage   // T1
         status.uploadsPending = (uploads?.waiting ?? 0) + uploading
         status.uploadsFailed = failed.count
         status.firstFailure = failed.first
@@ -377,6 +383,8 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(exactStatusTipDismissed, forKey: "exactStatusTipDismissed") }
     }
 
+    /// Seconds between timed refreshes; the status file says so, and velumctl calls it stale after two (T1).
+    static let refreshEvery: TimeInterval = 2.5
     private let collector = Collector()
     private let transfers = TransferMonitor()
     private let uploadTracker = UploadTracker()
@@ -485,7 +493,7 @@ final class Store: ObservableObject {
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.refresh() } }
         }
         refresh(force: true)
-        timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: Self.refreshEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
         let center = NSWorkspace.shared.notificationCenter
@@ -512,6 +520,7 @@ final class Store: ObservableObject {
         queue.async {
             var next = collector.collect(force: force, transfers: liveTransfers, uploads: tracker.summary())
             next.stuck = tracker.pending(olderThan: UploadTracker.stuckAfter)
+            let notInCloud = tracker.pending(olderThan: 0)   // T1: every file not in the cloud yet, for velumctl
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     self.inFlight = false
@@ -519,6 +528,7 @@ final class Store: ObservableObject {
                         self.snapshot = next
                     }
                     self.onRefresh?(next)
+                    StatusFile.shared.write(self, notInCloud: notInCloud)   // T1: the status velumctl reads
                     if DebugLog.shared.isEnabled {
                         for line in DebugLog.changes(from: self.loggedSnapshot, to: next) { debugLog("status", line) }
                         self.loggedSnapshot = next

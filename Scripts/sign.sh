@@ -87,6 +87,10 @@ fi
 PASSWORD=$(<"$PASSWORD_FILE")
 security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
 trap 'security lock-keychain "$KEYCHAIN" >/dev/null 2>&1 || true' EXIT
+# Tools inside the bundle (T1's velumctl) first, with the same identity, then the app around them.
+if [[ -f "$APP/Contents/MacOS/velumctl" ]]; then
+  codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" --identifier io.github.nafatyuk.velumctl "$APP/Contents/MacOS/velumctl"
+fi
 codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" --identifier io.github.nafatyuk.velum "$APP"
 codesign --verify --strict "$APP"
 security lock-keychain "$KEYCHAIN"
