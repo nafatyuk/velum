@@ -172,6 +172,7 @@ final class OneDriveCompatibility {
     static func diagnosticsResult(_ diag: Diagnostics?, exists: Bool) -> (InternalCheck.Result, String)? {
         guard exists else { return (.missing, "no report yet (OneDrive writes one about every hour)") }
         guard let diag else { return nil }
+        if diag.isVerification { return (.fine, "a verification pass this time, with no status in it") }
         guard let code = diag.progressState else { return (.changed, "no SyncProgressState line") }
         return knownCodes.contains(code) ? (.fine, "code \(code)") : (.unrecognized, "unknown code \(code)")
     }

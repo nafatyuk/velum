@@ -149,9 +149,16 @@ final class OneDriveProvider: SyncProvider, @unchecked Sendable {
         let stamp = OneDriveFiles.modificationDate(path)
         // A failed read (the file is there, nothing came back) is retried next pass, not kept for the hour (A7).
         if !force, let cached = diagCache[key], cached.stamp == stamp, cached.value != nil || stamp == nil { return cached.value }
-        let value = OneDriveFiles.diagnostics(at: path)
+        let value = Self.keepingStatus(OneDriveFiles.diagnostics(at: path), previous: diagCache[key]?.value)
         diagCache[key] = (stamp, value)
         return value
+    }
+
+    /// A verification pass replaces the report but carries no status: keep the last report that had one, with
+    /// its own date, so the row shows its true age (and goes old on time) instead of losing its source.
+    static func keepingStatus(_ new: Diagnostics?, previous: Diagnostics?) -> Diagnostics? {
+        guard new?.isVerification == true, let previous, previous.progressState != nil else { return new }
+        return previous
     }
 
     private func activity(_ key: String, force: Bool) -> [Activity] {

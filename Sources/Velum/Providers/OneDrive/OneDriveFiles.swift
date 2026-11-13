@@ -17,6 +17,9 @@ struct Diagnostics: Equatable {
     var filesToDownload = 0
     var files = 0
     var folders = 0
+    /// Now and then OneDrive overwrites the report with a "Sync Verification" pass: a folder-by-folder scan
+    /// with no `SyncProgressState` line. It isn't a format change, and it says nothing about the status.
+    var isVerification = false
 
     var pendingFiles: Int { filesToUpload + filesToDownload }
 }
@@ -109,6 +112,10 @@ enum OneDriveFiles {
     static func diagnostics(at path: String) -> Diagnostics? {
         guard let written = modificationDate(path), let text = readText(URL(fileURLWithPath: path)) else { return nil }
         var d = Diagnostics(written: written)
+        if text.prefix(200).contains("Sync Diagnostics - Sync Verification") {
+            d.isVerification = true
+            return d
+        }
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("SyncProgressState:") {
