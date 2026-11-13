@@ -196,11 +196,11 @@ import Testing
     }
 
     @Test func aSignInAsAnotherAccountIsDiscarded() async {
-        let other = Self.json(["user": ["emailAddress": "somebody.different@gmail.com"], "storageQuota": ["usage": "1"]])
+        let other = Self.json(["user": ["emailAddress": "somebody.different@example.com"], "storageQuota": ["usage": "1"]])
         let google = Self.consentingGoogle(about: other)
         let tokens = MemoryTokens()
         let (storage, defaults) = Self.make(google, tokens: tokens, on: false)
-        await #expect(throws: GoogleSignInError.otherAccount("somebody.different@gmail.com")) {
+        await #expect(throws: GoogleSignInError.otherAccount("somebody.different@example.com")) {
             try await storage.signIn(Self.email, open: Self.browser())
         }
         #expect(tokens.items.isEmpty)
@@ -328,13 +328,13 @@ import Testing
     }
 
     @Test func anotherAccountsSignInShowsANoteAndNoFigures() async {
-        let other = Self.json(["user": ["emailAddress": "somebody.different@gmail.com"],
+        let other = Self.json(["user": ["emailAddress": "somebody.different@example.com"],
                                "storageQuota": ["limit": "100", "usage": "50"]])
         let (storage, _) = Self.make(Self.google(about: other))
         await storage.fetch(Self.email)
         #expect(storage.storage(for: Self.email) == nil)
         #expect(storage.peek(Self.email) == nil)
-        #expect(storage.note(for: Self.email) == "Storage not shown · the Google sign-in is for somebody.different@gmail.com")
+        #expect(storage.note(for: Self.email) == "Storage not shown · the Google sign-in is for somebody.different@example.com")
     }
 
     @Test func emailCaseDoesNotMatter() async {
