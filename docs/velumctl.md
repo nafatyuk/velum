@@ -33,7 +33,7 @@ Every command exits with the lid's answer, so any of them can gate a script:
 | 0 | Safe to close the lid: every change in the watched cloud folders is in the cloud. |
 | 1 | Wait: files are on their way up, or a service's own queue is still working. |
 | 2 | Not everything is in the cloud: files can't upload, or a sync app isn't running. |
-| 3 | Can't tell: Velum can't vouch, isn't running, or its status is out of date or unreadable. |
+| 3 | Can't tell: Velum can't vouch, isn't running, or its status is out of date or unreadable. While an other cloud folder (beta) is shown, a lid with nothing waiting is 3, never 0: handle 3 apart from 1. |
 | 64 | Usage error. |
 
 ```sh
@@ -61,7 +61,7 @@ Dates are ISO 8601 in UTC with milliseconds (`2026-11-13T06:12:01.234Z`); durati
 ### The rules
 - `schema` goes up only when a key is renamed or removed, a value changes meaning, or a list of values (like `verdict`) gains one. New keys can appear within a schema; ignore the ones you don't know.
 - A reader that meets a newer schema answers "can't tell". It never guesses.
-- Services, accounts and files are lists of any length. Account keys are Velum's own (`Personal`, `Business1`, `iCloudDrive`, `googledrive:<email>`) and come and go at run time: never assume three services or fixed keys.
+- Services, accounts and files are lists of any length. Account keys are Velum's own (`Personal`, `Business1`, `iCloudDrive`, `googledrive:<email>`, `cloudstorage:<folder name>`) and come and go at run time: never assume three services or fixed keys.
 
 ### velumctl's output
 
@@ -96,7 +96,7 @@ The status file itself is `velumctl status --json` without `fresh` and `ageSecon
 
 | Key | |
 |---|---|
-| `id` | `onedrive`, `icloud`, `googledrive`; more may come. |
+| `id` | `onedrive`, `icloud`, `googledrive`, `cloudstorage` (other cloud folders, beta); more may come. |
 | `name` | As the panel's heading says it. |
 | `appRunning` | Left out when there's no app to run (iCloud is part of macOS). |
 | `trouble` | A service-wide problem ("Storage full"). |

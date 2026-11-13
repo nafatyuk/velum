@@ -9,6 +9,7 @@ struct VelumApp: App {
         GoogleSignInDebug.runIfAsked()
         if CommandLine.arguments.contains("--dump"), CommandLine.arguments.contains("--redact") { DiagnosticsReport.printFromTerminal(); exit(0) }   // card S2
         HistoryProbe.runIfAsked()   // A6: --history-probe <seconds> <file.json>
+        if let i = CommandLine.arguments.firstIndex(of: "--cross-check") { GenericCrossCheck.run(seconds: CommandLine.arguments.dropFirst(i + 1).first.flatMap { Double($0) } ?? 60); exit(0) }   // C3, test-only
         if CommandLine.arguments.contains("--dump") {
             DebugDump.run()
             exit(0)
@@ -108,6 +109,8 @@ enum DebugDump {
                 print("iCloud Drive: on\(provider.trouble.map { " · \($0)" } ?? "")")
             case .googleDrive:
                 print("Google Drive running: \(provider.clientRunning == true)\(provider.trouble.map { " · \($0)" } ?? "")")
+            case .cloudStorage:
+                print(GenericText.dumpService(snapshot.accounts.filter { $0.provider == .cloudStorage }.count))
             }
         }
         for account in snapshot.accounts {
@@ -119,13 +122,14 @@ enum DebugDump {
             print("    \(account.headline)")
             if let reason = account.reason { print("    why: \(reason)") }
             if !account.notes.isEmpty { print("    \(account.notes)") }
+            if account.provider.isBeta { print("    " + GenericText.dumpLine(GenericProvider.identify(account.config.folder))) }   // C3
             if !account.detail.isEmpty { print("    \(account.detail)") }
             print("    history: \(History.shared.line(for: account.id).summary)")   // A6
             print("    folder: \(account.config.folder.path)")
             if account.config.watchRoots.count > 1 {
                 print("    also watching: \(account.config.watchRoots.dropFirst().map(\.path).joined(separator: ", "))")
             }
-            print("    online: \(account.config.webURL.absoluteString)")
+            print("    online: \(account.config.webURL?.absoluteString ?? "none")")
         }
         printStuck(snapshot.stuck)
         // Card A7: every internal Velum reads, checked against the tested versions.

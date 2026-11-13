@@ -139,6 +139,7 @@ struct PanelView: View {
                     get: { store.loginItemEnabled },
                     set: { actions.setLoginItem($0) }
                 ))
+                OtherCloudFoldersToggle(store: store)   // C3: only while the tier has folders, or is switched off
                 Button("Menu Bar Settings…") { actions.openMenuBarSettings() }
                 Divider()
                 Toggle("Debug Logging", isOn: Binding(
@@ -183,7 +184,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text("No cloud accounts found")
                 .font(.body.weight(.medium))
-            Text("OneDrive, iCloud Drive and Google Drive accounts show up here once they’re signed in and syncing.")
+            Text("OneDrive, iCloud Drive and Google Drive accounts show up here once they’re signed in and syncing. Other cloud folders show up too, in beta.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -360,10 +361,10 @@ struct AccountRow: View {
     private var buttons: some View {
             HStack(spacing: 0) {
                 CircleIconButton(systemName: "folder", help: "Open in Finder") { actions.openFolder(account.config) }
-                CircleIconButton(systemName: "globe", help: "View online") { actions.openURL(account.config.webURL) }
+                if let web = account.config.webURL { CircleIconButton(systemName: "globe", help: "View online") { actions.openURL(web) } }
                 Menu {
                     Button("Open in Finder") { actions.openFolder(account.config) }
-                    Button("View Online") { actions.openURL(account.config.webURL) }
+                    if let web = account.config.webURL { Button("View Online") { actions.openURL(web) } }
                     if let url = account.config.recycleBinURL {
                         Button(account.provider.deletedFilesLabel) { actions.openURL(url) }
                     }
@@ -517,6 +518,8 @@ struct ServiceHeading: View {
                 Text(trouble)
                     .font(.subheadline)
                     .foregroundStyle(.orange)
+            } else if provider.id.isBeta {   // C3: a count of folders; beta is on each row
+                Text(accounts.count == 1 ? "1 folder" : "\(accounts.count) folders").font(.subheadline).foregroundStyle(.tertiary)
             } else if let count {
                 Text(count)
                     .font(.subheadline)

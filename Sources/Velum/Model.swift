@@ -134,6 +134,7 @@ struct Snapshot: Equatable {
         if let blind = accounts.first(where: { !$0.uploadsCovered }) {
             return .unknown("Velum may have missed recent changes in \(blind.name)")
         }
+        if let beta = GenericText.lid(accounts) { return .unknown(beta) }   // C3: unconfirmed flags never make "safe"
         return .safe
     }
 }
@@ -143,7 +144,8 @@ final class Collector: @unchecked Sendable {
     let providers: [SyncProvider]
 
     /// Every service Velum knows. Each one shows only while it has a live account on this Mac.
-    init(providers: [SyncProvider] = [OneDriveProvider(), ICloudProvider(), GoogleDriveProvider()]) {
+    init(providers: [SyncProvider] = [OneDriveProvider(), ICloudProvider(), GoogleDriveProvider(),
+                                      GenericProvider()]) {   // C3: last, so its heading is last
         self.providers = providers
     }
 
@@ -307,6 +309,7 @@ final class Collector: @unchecked Sendable {
         } else {
             age = ""
             reason = account.unknownReason
+            headline = account.unknownHeadline ?? headline   // C3
             reasonReplacesSource = reason != nil
         }
         if let note = account.compatibilityNote {
@@ -320,7 +323,7 @@ final class Collector: @unchecked Sendable {
            waiting + uploading + failed.count == 0, !unlabelled {
             // What Velum does know: every local change it saw is in the cloud. It reconciles a grey row with
             // "Safe to close the lid" above it.
-            reason = [reason, Reasons.nothingWaiting].compactMap { $0 }.joined(separator: " ")
+            reason = [reason, config.provider.isBeta ? GenericText.nothingWaiting : Reasons.nothingWaiting].compactMap { $0 }.joined(separator: " ")
         }
         if account.running, watchingUploads, uploads?.coverageGap == true {
             reason = [reason, Reasons.coverageGap(until: uploads?.coverageGapUntil)].compactMap { $0 }.joined(separator: " ")

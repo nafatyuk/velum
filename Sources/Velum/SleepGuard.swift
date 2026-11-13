@@ -491,7 +491,7 @@ final class SleepGuard {
         }
         let apps = ordered(Set(watch.files.values).compactMap { watch.services[$0] } + queues)
         // iCloud is part of macOS, with no app to "run"; three services read better as a time than a list.
-        let later = apps.isEmpty || apps.contains(.iCloud) || apps.count > 2
+        let later = apps.isEmpty || apps.contains { $0.clientBundleID == nil } || apps.count > 2   // C3: other cloud folders name no one app
             ? "after you log in again"
             : "the next time \(names(apps)) \(apps.count == 1 ? "runs" : "run")"
         let body = n == 1 ? "1 file isn’t in the cloud yet. It’ll upload \(later)."

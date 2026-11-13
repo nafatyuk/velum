@@ -1,10 +1,10 @@
 import Foundation
 
-/// Made-up panels for `Velum --render-panel out.png --sample healthy|unknown|old [--legend] [--dark]`, so the panel can be drawn and shared
+/// Made-up panels for `Velum --render-panel out.png --sample healthy|unknown|old|beta [--legend] [--dark]`, so the panel can be drawn and shared
 /// without anyone's real accounts, emails or file names. Every row goes through the real status merge
 /// (`Collector.status`), so a sample shows exactly what that evidence would show.
 enum SampleData {
-    static let names = ["healthy", "unknown", "old"]
+    static let names = ["healthy", "unknown", "old", "beta"]
 
     static func snapshot(_ name: String, now: Date = Date()) -> Snapshot? {
         guard names.contains(name) else { return nil }
@@ -73,6 +73,11 @@ enum SampleData {
         }
         snapshot.accounts = [status(personalEvidence, covered), status(workEvidence, covered),
                              status(iCloudEvidence, iCloudUploads), status(googleEvidence, covered)]
+        if name == "beta" {   // C3: the generic tier, one folder identified and idle, one unnamed and uploading
+            let (generic, uploads) = betaFolders()
+            snapshot.providers.append(ProviderStatus(id: .cloudStorage, clientRunning: nil))
+            snapshot.accounts += zip(GenericProvider.accounts(generic), uploads).map { status($0, $1) }
+        }
         snapshot.activity = [
             Activity(accountKey: personal.key, path: personal.folder.path + "/Budget 2026.xlsx", name: "Budget 2026.xlsx",
                      kind: 5, date: now.addingTimeInterval(-5 * 60), app: "Numbers"),
@@ -101,6 +106,19 @@ enum SampleData {
                                       NamedRoot(path: documents.path, name: "Documents", prefixed: true)],
                              fallbackName: "iCloud Drive", webURL: URL(string: "https://www.icloud.com/iclouddrive/")!,
                              keepsOwnHistory: false)
+    }
+
+    /// Made-up generic folders: "Dropbox", identified, idle; "AcmeSync-alex.sample@example.com", unnamed, uploading.
+    private static func betaFolders() -> ([GenericProvider.Folder], [UploadSummary]) {
+        let base = "/Users/sample/Library/CloudStorage/"
+        let app = GenericProvider.ClientApp(name: "Dropbox", bundleID: "com.example.dropbox", extensionID: "com.example.dropbox.fileprovider")
+        let dropbox = GenericProvider.folder(name: "Dropbox", root: URL(fileURLWithPath: base + "Dropbox"),
+                                             extensionID: app.extensionID, app: app)
+        let acme = GenericProvider.folder(name: "AcmeSync-alex.sample@example.com", root: URL(fileURLWithPath: base + "AcmeSync-alex.sample@example.com"),
+                                          extensionID: nil, app: nil)
+        var uploading = UploadSummary()
+        uploading.uploading = 2
+        return ([dropbox, acme], [UploadSummary(), uploading])
     }
 
     private static func googleDrive(_ email: String) -> AccountConfig {

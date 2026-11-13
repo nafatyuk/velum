@@ -5,7 +5,7 @@ import Testing
 /// The optional Google sign-in, with a stubbed network, an in-memory Keychain and a private UserDefaults.
 /// Made-up accounts only.
 @Suite struct GoogleSignIn {
-    static let email = "someone.else@gmail.com"
+    static let email = "someone.else@example.com"
     static let client = GoogleOAuthClient(id: "test-client.apps.googleusercontent.com", secret: "test-secret")
 
     /// Records every request and answers from `handler`.
@@ -422,7 +422,7 @@ import Testing
     @Test func theCacheWinsWhenItHasFigures() {
         withCountingSeam { counter in
             let cached = GoogleStorage(limit: 400, used: 186, usedInDrive: nil, source: .driveCache, asOf: Fixture.now)
-            let shown = GoogleDriveProvider.storage(cached: cached, email: "someone.else@gmail.com")
+            let shown = GoogleDriveProvider.storage(cached: cached, email: "someone.else@example.com")
             #expect(shown.storage == cached)
             #expect(shown.signInNote == nil)
             #expect(counter.storage == 0 && counter.notes == 0)       // the sign-in is never asked
@@ -431,7 +431,7 @@ import Testing
 
     @Test func theSignInFillsAnEmptyCache() {
         withCountingSeam { counter in
-            let shown = GoogleDriveProvider.storage(cached: nil, email: "someone.else@gmail.com")
+            let shown = GoogleDriveProvider.storage(cached: nil, email: "someone.else@example.com")
             #expect(shown.storage?.source == .googleSignIn)
             #expect(shown.signInNote == "a note")
             #expect(counter.storage == 1 && counter.notes == 1)

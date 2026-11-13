@@ -563,7 +563,9 @@ enum DiagnosticsReport {
     /// Every way an account can be named: its name, its address, its organization as its folder spells it.
     static func names(of account: AccountStatus) -> [String] {
         let c = account.config
-        var names = [account.name, c.fallbackName]
+        // A generic row's name is its app's ("Dropbox"), nobody's: only its folder's account part is personal (C3).
+        var names = account.provider.isBeta ? [] : [account.name, c.fallbackName]
+        if account.provider.isBeta { names += GenericProvider.parts(of: c.folder.lastPathComponent).account.map { [$0] } ?? [] }
         if c.key.hasPrefix("googledrive:") { names.append(String(c.key.dropFirst("googledrive:".count))) }
         for url in [c.folder] + c.watchRoots + c.places.map({ URL(fileURLWithPath: $0.path) }) {
             let folder = url.lastPathComponent
@@ -667,6 +669,8 @@ enum DiagnosticsReport {
             case .googleDrive:
                 parts = ["app \(provider.clientRunning == true ? "running" : "not running")"]
                 if let paused = input.googlePaused { parts.append("paused: \(paused ? "yes (user-paused file)" : "no")") }
+            case .cloudStorage:
+                parts = ["beta", "macOS’s file flags only", "no app Velum can start or stop"]
             }
             if let trouble = provider.trouble { parts.append(r.text(trouble)) }
             line("  \(provider.id.name): " + parts.joined(separator: " · "))
@@ -788,6 +792,8 @@ enum DiagnosticsReport {
             var parts = ["Google Drive’s queue: " + (queue.map { r.text($0.detail.isEmpty ? $0.result.rawValue : $0.detail) } ?? "not read")]
             if let paused = input.googlePaused { parts.append("paused: \(paused ? "yes" : "no")") }
             return parts.joined(separator: " · ")
+        case .cloudStorage:
+            return "macOS’s file flags only · " + r.text(GenericText.dumpLine(GenericProvider.identify(account.config.folder)))
         }
     }
 }

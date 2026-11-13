@@ -4,17 +4,17 @@ import Testing
 @testable import Velum
 
 @Suite struct GoogleDrive {
-    let root = URL(fileURLWithPath: "/Users/test/Library/CloudStorage/GoogleDrive-someone.else@gmail.com")
+    let root = URL(fileURLWithPath: "/Users/test/Library/CloudStorage/GoogleDrive-someone.else@example.com")
 
     @Test func accountFromItsFolder() {
-        let c = GoogleDriveProvider.config(email: "someone.else@gmail.com", root: root)
-        #expect(c.key == "googledrive:someone.else@gmail.com")
+        let c = GoogleDriveProvider.config(email: "someone.else@example.com", root: root)
+        #expect(c.key == "googledrive:someone.else@example.com")
         #expect(c.provider == .googleDrive)
-        #expect(c.fallbackName == "someone.else@gmail.com")
+        #expect(c.fallbackName == "someone.else@example.com")
         #expect(c.watchRoots == [root])
         #expect(c.keepsOwnHistory == false)
-        #expect(c.webURL.absoluteString == "https://drive.google.com/drive/my-drive?authuser=someone.else@gmail.com")
-        #expect(c.recycleBinURL?.absoluteString == "https://drive.google.com/drive/trash?authuser=someone.else@gmail.com")
+        #expect(c.webURL?.absoluteString == "https://drive.google.com/drive/my-drive?authuser=someone.else@example.com")
+        #expect(c.recycleBinURL?.absoluteString == "https://drive.google.com/drive/trash?authuser=someone.else@example.com")
         #expect(c.location(of: root.path + "/My Drive/Classes/a.pdf") == "In My Drive/Classes")
         #expect(c.location(of: root.path + "/Shared drives/Lab/b.pdf") == "In Shared drives/Lab")
     }

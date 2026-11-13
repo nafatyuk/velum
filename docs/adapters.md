@@ -7,8 +7,8 @@ service you use every day.
 
 This guide is a recipe for someone who won't have the author at their elbow. It covers what an adapter
 answers, the rules that keep Velum honest, the three adapters that exist (OneDrive, iCloud Drive and
-Google Drive) as worked examples, how to test without anyone's data, the live checklist, and why every
-adapter needs a named maintainer.
+Google Drive) as worked examples, the generic tier that covers every other File Provider folder in beta,
+how to test without anyone's data, the live checklist, and why every adapter needs a named maintainer.
 
 **One rule above the rest:** Velum never says "Up to date", "safe" or green without evidence it can name.
 When the evidence runs out, the answer is "Can’t tell", with a reason. A false "synced" is the worst bug
@@ -56,6 +56,10 @@ every service alike.
 folder. They were real for OneDrive, iCloud Drive and Google Drive, but that was checked on a real Mac each
 time, and a client could set them differently. Don't merge an adapter that lists a folder in `watchRoots`
 until step 1 of the live checklist has confirmed its flags on a real Mac.
+
+The one exception is the [generic tier](#the-generic-tier-beta-macoss-evidence-and-nothing-else) (card C3). Generic beta folders may be watched
+before their file flags are confirmed. Their observed work counts, but they cannot establish that closing the
+lid is safe: while one is shown, the lid line says "Can’t vouch for every change" instead of "Safe".
 
 Your adapter adds what only the service knows:
 - which accounts exist, and where their folders are;
@@ -116,6 +120,7 @@ it means, and what to return when you can't tell.
 | `exactStatus` | The client's own words for this account (OneDrive's icon text). Non-empty text outranks everything except "not running", live failures included, and goes through `SyncState.classify`, which knows OneDrive's English wording only | **Leave it `nil`** (see [rule 6](#rule-6-live-evidence-comes-before-reports)) |
 | `report` | The account-wide status: a `ProviderReport` (below) | `nil`. Unless macOS's live evidence gives the row a status (files waiting, moving or failing), it then says "Can’t tell yet", with your `unknownReason` |
 | `unknownReason` | Why there is no status, and what would end it, in a sentence: "Checking iCloud now. This takes about 15 seconds." | Always set it when `report` is `nil` |
+| `unknownHeadline` | The headline in place of "Can’t tell yet" when no report will ever come, so "yet" would promise an end (the generic tier's "Can’t tell") | `nil` |
 | `lastActivity` | When the account last did something, for "last change 5 min ago" | `nil` |
 | `notes` | Facts about the account for its own line: "Desktop & Documents included", "214 GB free of 400 GB" | Empty |
 | `notesHelp`, `notesNeedAttention` | Hover text for the notes; orange when they need the eye (storage almost full) | `nil`, `false` |
@@ -136,7 +141,7 @@ changes by itself.
 | `watchRoots` | Every folder whose changes count. Velum watches exactly these, so a live folder of the service that no account lists is a blind spot (A7 can check for it) |
 | `places` | Every path that leads into the account, symlinks included, with how to say where a file is (`NamedRoot`: "In My Drive/Classes", "In the top of OneDrive-Personal", or `flat` for folders named by IDs) |
 | `fallbackName` | The account's name when nothing better is known |
-| `webURL`, `recycleBinURL`, `storageURL` | View Online, the deleted-files item, Manage Storage. Only `webURL` is required |
+| `webURL`, `recycleBinURL`, `storageURL` | View Online, the deleted-files item, Manage Storage. Set `webURL` whenever the service has a web address; `nil` hides View Online (the generic tier, which can't know one) |
 | `keepsOwnHistory` | `false` when the service keeps no history Velum can read. Velum then records the uploads it sees finish, and the legend says Recent is partial for your service |
 
 ### `ProviderReport`: an account-wide status, with its source and age
@@ -163,14 +168,15 @@ the first rule that applies wins:
 5. **Files waiting**, from macOS: "Waiting to upload 2 files", or "Paused, 2 files waiting" when a usable report says paused.
 6. **Progress with no direction**, from macOS: "Syncing changes".
 7. **Your report.** It keeps its own headline. A timed report that is old, or dated more than five minutes in the future, is never green. A healthy report's source gains "Nothing pending · " when Velum's own watching has no gaps.
-8. **Nothing at all:** "Can’t tell yet", with your `unknownReason`.
+8. **Nothing at all:** "Can’t tell yet" (or your `unknownHeadline`), with your `unknownReason`.
 
 Then, if A7's checks dropped some of your evidence, the account's `compatibilityNote` leads the reason line.
 
 **The lid line** ("Safe to close the lid?") is stricter. It uses only live evidence: files waiting,
 uploading or failing, whether Velum's watching has gaps, whether each app runs, live queues (a report with
 `timed == false` and state `.syncing` holds it at "still syncing"), and A7 checks that guard it. A periodic
-report never decides the lid, fresh or old.
+report never decides the lid, fresh or old. And while a generic (beta) folder is shown, the lid never says
+"safe": its waiting, uploading and failing files still count, but its flags were never confirmed.
 
 **The icon** shows the worst state of any account or stopped app.
 
@@ -228,6 +234,17 @@ The other two differ for reasons of their own. OneDrive's settings files indepen
 exist, so it drops an account only on a clear `false`. iCloud Drive has one fixed folder and reads the
 same flag on it directly. A folder name alone is weaker evidence, so a folder-based adapter wants the clear
 yes.
+
+A second sign, checked on macOS 27.3: every live root under `~/Library/CloudStorage` carries the extended
+attribute `com.apple.file-provider-domain-id` ("<the File Provider extension's bundle ID>/<the domain's
+ID>"), and the leftover folders don't. The generic tier uses it to name the app behind a folder, never to
+decide whether the folder is live. The domain's ID is the client's own (Google Drive's is the account's
+number): never show or log it.
+
+**Claim your folders.** Add your service to `ProviderID.claims(folder:extensionID:)`
+(`Providers/Generic/GenericProvider.swift`): your folder-name prefix, and your File Provider extension's
+bundle ID prefix. The generic tier then leaves those folders alone, so nothing shows twice, even if the
+client renames its folders.
 
 ### Rule 5: a service is present only with a live account
 
@@ -405,9 +422,28 @@ Also: `keepsOwnHistory` is `false`, `.Trash` inside the folder is never tracked 
 upload), and folders under `.shortcut-targets-by-id` are a `flat` place, "In a folder shared with you".
 Mirror mode keeps files outside File Provider and isn't covered.
 
+### The generic tier (beta): macOS's evidence and nothing else
+
+`Sources/Velum/Providers/Generic/`, card C3. Not an adapter for one service: the floor for every File
+Provider folder no adapter claims (Dropbox, Box, Proton Drive, Nextcloud…), and a fallback should a deep
+adapter's internals ever fail entirely.
+
+| What it reads | For | Why this way |
+|---|---|---|
+| Every folder in `~/Library/CloudStorage` that `isLiveCloudFolder` calls live and no `ProviderID.claims` | One row each, key `"cloudstorage:<folder name>"`, under one heading, "Other Cloud Folders" | The folder's name is the only identity there is. A clear yes only, so leftovers never show |
+| The folder's `com.apple.file-provider-domain-id` attribute, then the installed app whose `Contents/PlugIns` ships an extension with exactly that bundle ID | The row's name ("Dropbox"), and "app unknown" on the notes line when no app ships it | Verified, never guessed: the app's bundle ID is a prefix of its extension's, and the app must really contain it. Otherwise the name is the folder's own spelling, before the first hyphen |
+| Nothing of the client's own | — | No report, no queue, no process: `report` and `exactStatus` stay `nil`, `clientRunning` is `nil`, `running` stays `true` |
+
+What it shows: files waiting, uploading, failing (with macOS's reason) and downloading, as for every
+service; with nothing moving, "Can’t tell" and "macOS shows nothing waiting to upload". It never says "Up
+to date", and while one of its folders is shown the lid line can't say "safe". Every row says "Beta" first
+on its notes line; ••• → Show Other Cloud Folders turns the whole tier off (then nothing is watched).
+`Velum --cross-check` runs the folders the deep adapters claim through the generic tier as well and compares
+the two, which is how a deep adapter's flags and the generic tier's are checked against each other.
+
 ## Adding a service, file by file
 
-When you add a `ProviderID` case, Swift's exhaustive `switch` statements point at the first four rows (six
+When you add a `ProviderID` case, Swift's exhaustive `switch` statements point at the first six rows (nine
 switches in all). The rest the compiler can't see.
 
 | File | What you add |
@@ -416,6 +452,8 @@ switches in all). The rest the compiler can't see.
 | `Providers/Compatibility.swift` | `testedVersions` (and `versionOwner` for a system service); your row and alert sentences in `CompatibilityText` |
 | `LegendView.swift` | Your line in `sourceLines`: where status comes from, and when it goes old |
 | `Entry.swift` | Your service's line in the `--dump` printout. If your first check is slow, wait for it in `collectOnce`, as iCloud's `waitForFirstCheck` does |
+| `Providers/Generic/GenericProvider.swift` | Your claim in `ProviderID.claims(folder:extensionID:)`, so the generic tier leaves your folders alone ([rule 4](#rule-4-discover-with-islivecloudfolder-where-only-a-clear-yes-counts)) |
+| `Diagnostics.swift` | Your service's line under "Services", and its account evidence in `evidence(_:input:r:)`; any new account-identifying string in `names(of:)` and in `Scripts/check-redaction.py` |
 | `Providers/<Service>/<Service>Provider.swift` | The adapter. Give it `init(home:)` and an `isLive` seam, so tests can point it at a fake home folder |
 | `Providers/<Service>/<Service>Compatibility.swift` | Its A7 checker. The file name carries the service's name: one module can't hold two files with the same name |
 | `Model.swift` | Your adapter in `Collector.init`'s default list. Its place there is its heading's place in the panel |
@@ -582,17 +620,18 @@ adapter lists. A **deep** adapter goes further and reads what only the service k
 tools or app. Either way, an adapter for a client nobody here uses is how wrong statuses ship, and a wrong
 "Up to date" is the bug this app exists to prevent.
 
-So a service without a maintainer gets no adapter. A generic tier (card C3) is planned to show any File
-Provider folder at basic fidelity (waiting, uploading, failing), labelled beta. Until it lands, a service
-without an adapter doesn't appear.
+So a service without a maintainer gets no adapter. The [generic tier](#the-generic-tier-beta-macoss-evidence-and-nothing-else) (card C3)
+shows any other File Provider folder at basic fidelity (waiting, uploading, failing), labelled beta, with
+no maintainer: its rows never say "Up to date" and it never lets the lid say "safe". A service leaves the
+beta tier when a maintainer's adapter claims its folders, after the live checklist.
 
 | Service | Adapter | Maintainer |
 |---|---|---|
 | OneDrive | deep | repository owner |
 | iCloud Drive | deep | repository owner |
 | Google Drive (streaming) | deep | repository owner |
-| Dropbox | none yet ([card P2](plans/roadmap/cards/P2-dropbox.md)) | wanted |
-| Box, Proton Drive, Nextcloud and others | none yet | wanted |
+| Dropbox | generic tier (beta); deep: none yet ([card P2](plans/roadmap/cards/P2-dropbox.md)) | wanted |
+| Box, Proton Drive, Nextcloud and others | generic tier (beta) | wanted |
 
 To volunteer, open an issue naming the service, the client version and your macOS version.
 
@@ -602,6 +641,7 @@ To volunteer, open an issue naming the service, the client version and your macO
 - [ ] `ProviderID`: a new case whose raw value will never change; `name`, `clientBundleID`, `deletedFilesLabel`.
 - [ ] `watchRoots` lists only folders whose flags step 1 of the live checklist confirmed.
 - [ ] Discovery uses `isLiveCloudFolder`, with only a clear yes making a new account; leftover folders don't appear.
+- [ ] Your folders are claimed in `ProviderID.claims(folder:extensionID:)`, so the generic tier doesn't show them too.
 - [ ] Not present without a live account; tested.
 - [ ] Account keys are prefixed with your raw value and stable across launches.
 - [ ] No `.ok` without evidence you can name. Every report has a `label` and `written`; every timed report has `every`.
