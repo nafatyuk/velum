@@ -58,6 +58,13 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
     /// figures, like `signInStorage`. Same rules: collector's queue, never blocks.
     nonisolated(unsafe) static var signInNote: (_ email: String) -> String? = { _ in nil }
 
+    /// The storage to show, and the sign-in's note: the Drive cache wins, and the sign-in is asked only when
+    /// the cache has nothing.
+    static func storage(cached: GoogleStorage?, email: String) -> (storage: GoogleStorage?, signInNote: String?) {
+        guard cached == nil else { return (cached, nil) }
+        return (signInStorage(email), signInNote(email))
+    }
+
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         cloudStorage = home.appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
         driveFS = home.appending(path: "Library/Application Support/Google/DriveFS", directoryHint: .isDirectory)
@@ -80,15 +87,15 @@ final class GoogleDriveProvider: SyncProvider, @unchecked Sendable {
             // The Drive cache wins; the optional sign-in is asked only when the cache has nothing, so with the
             // cache present it makes no request at all.
             let cached = dataFolders[config.key].flatMap { cachedStorage(config.key, folder: $0) }
-            let storage = cached ?? Self.signInStorage(config.fallbackName)
+            let (storage, signInNote) = Self.storage(cached: cached, email: config.fallbackName)
             if let storage {
                 account.notes.append(Self.storageNote(storage))
                 account.notesHelp = Self.storageHelp(storage)
                 account.notesNeedAttention = storage.isFull || storage.isAlmostFull
                 account.storageFull = storage.isFull
             }
-            if cached == nil, let note = Self.signInNote(config.fallbackName) {
-                account.notes.append(note)
+            if let signInNote {
+                account.notes.append(signInNote)
             }
             if running && paused {
                 // Google Drive's own pause, for every account. Waiting files still show as "Paused, N waiting".

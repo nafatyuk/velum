@@ -38,8 +38,9 @@ keeps working.
   Deleted Files), storage page; start, restart or quit OneDrive and Google Drive; open at login.
 
 Velum needs no special permissions, never modifies any sync app's files or settings, and makes no
-network connections (unless you turn on the [optional Google sign-in](#optional-google-sign-in-for-storage)). The only things it does to OneDrive are the Restart and Quit OneDrive commands you
-click, and Start for a sync app that isn't running; everything else it only reads.
+network connections, unless you turn on the [optional Google sign-in](#optional-google-sign-in-for-storage).
+The only things it does to OneDrive are the Restart and Quit OneDrive commands you click, and Start for a
+sync app that isn't running; everything else it only reads.
 
 ## Requirements
 
@@ -127,8 +128,9 @@ To see what Velum sees without opening it:
 
 Velum shows a Google account's storage from Google Drive for desktop's own local cache, with no sign-in.
 If that cache ever has no figures for an account (a future Google Drive that stops keeping them), you can
-let Velum ask Google instead: the Google account row's ••• menu → **Show Storage with Google Sign-In…**.
-It's off by default, per account, and Velum works fully without it.
+let Velum ask Google instead: the Google account row's ••• menu → **Show Storage…**, which says what will
+happen and then opens Google in your browser. The item appears only while Google Drive's cache has no
+figures for that account. It's off by default, per account, and Velum works fully without it.
 
 - **What it adds:** the account's storage (used, of how much, and how much is Drive), refreshed about
   every 30 minutes and when you open the panel. Velum uses these figures only when Google Drive's cache
@@ -143,9 +145,10 @@ It's off by default, per account, and Velum works fully without it.
   Keychain.
 - **What it keeps:** the refresh token, in your login Keychain as "Velum Google Sign-In" (one item per
   account email), and the on/off switch in Velum's preferences.
-- **Turning it off** (••• → Turn Off Google Sign-In) revokes the grant at Google, deletes the Keychain item
-  and clears the switch. If the sign-in expires or you remove Velum's access in your Google Account, the
-  row quietly asks you to sign in again; Velum never pops anything up on its own.
+- **Turning it off** (••• → Stop Showing Storage, or Remove Google Sign-In once Google Drive's cache has
+  figures again) revokes the grant at Google, deletes the Keychain item and clears the switch. If the
+  sign-in expires or you remove Velum's access in your Google Account, the row quietly says "Storage not
+  shown · sign in again from the ••• menu" (••• → Sign In Again…); Velum never pops anything up on its own.
 - **Privacy policy:** <https://nafatyuk.github.io/velum/privacy.html> (served from this repo's `gh-pages`
   branch, which Google's consent screen links to).
 
@@ -215,8 +218,8 @@ an Apple-issued certificate uses system notifications automatically.
 - **OneDrive's own panel** (Pause syncing, Settings) can't be opened while its icons are hidden. Use
   Velum's ••• → Show OneDrive's Own Icons… to switch them back on when you need it.
 - **Google Drive's mirror mode isn't covered.** Velum watches Google Drive's streamed folders (the
-  default). A My Drive set to "Mirror files" lives outside them. Velum doesn't use the Google Drive API,
-  but it reads the storage Google Drive keeps on your Mac.
+  default). A My Drive set to "Mirror files" lives outside them. Storage comes from what Google Drive keeps
+  on your Mac; the Google Drive API is used only if you turn on the optional sign-in.
 - **iCloud's and Google Drive's Recent lists are partial.** They show only uploads Velum saw finish
   while it was running, not downloads or changes from your other devices.
 - **Personal accounts have no recycle bin link**, because OneDrive offers no stable address for it.

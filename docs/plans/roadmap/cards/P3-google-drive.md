@@ -150,3 +150,80 @@ The owner asked for three cheap fixes and for Google storage, the latter "as a d
   - an alert before opening the browser;
   - hidden in builds without the client configuration.
 - **iCloud "Recently Deleted".** A deep link doesn't exist: `icloud.com/iclouddrive/recently-deleted` opens "Item Unavailable". The row gets "Recover Deleted Files…", which opens Apple's documented `icloud.com/recovery`. Each service now names this item itself (`ProviderID.deletedFilesLabel`).
+
+### Hand-off: the optional Google sign-in for storage (November 12, afternoon)
+
+Built in a parallel session on branch `claude/google-storage-318c3f`, as the fallback the morning's work
+left a seam for. The owner's words: "a distinctly OPTIONAL thing: people can use it and it enhances what
+Velum can do and show, but for core functions it isn't needed. But it is very much there."
+
+**What it does.**
+- Per Google account, off by default, in Fable's wording. ••• → **Show Storage…** shows an alert ("Show
+  storage for <email>?", with "Continue in Browser"), then opens Google's consent page in the default
+  browser. After that, the row's storage comes from the Drive API whenever Google Drive's own cache has no
+  figures, with the main session's note format ("… from your Google sign-in, 3 min ago").
+- **The cache always wins.** The provider asks `signInStorage` and `signInNote` only when the cache is
+  empty (now through one helper, `GoogleDriveProvider.storage(cached:email:)`, so it's tested), and only
+  that question starts a fetch, so a cache with figures means no request at all. The same question tells
+  the menu whether "Show Storage…" would show anything: the item appears only while the cache is empty.
+- **Stop Showing Storage** revokes the grant at Google (`oauth2.googleapis.com/revoke`), deletes the
+  Keychain item and clears the switch. After `invalid_grant` the row says "Storage not shown · sign in again
+  from the ••• menu", and the menu offers **Sign In Again…**. With the cache showing storage again, an old
+  sign-in shows only **Remove Google Sign-In**, the session's own wording for a case the consult didn't cover.
+- Notes: "Waiting for Google sign-in…" while the browser is open, and "Storage not shown · the Google
+  sign-in is for <other>" when Google's email isn't the row's.
+- With the switch off: no network connections and no Keychain reads (tested).
+
+**How.** `Providers/GoogleDrive/GoogleSignIn.swift` (OAuth) and `GoogleSignInStorage.swift` (per-account
+state, Keychain, menu items, debug commands).
+- Google's installed-app flow: loopback redirect to `127.0.0.1:<port macOS picks>` (BSD socket, loopback
+  only, closes as soon as the code arrives; the `state` must match), PKCE S256, `access_type=offline`,
+  `prompt=consent`, `login_hint=<email>`.
+- Scope `drive.file` only. The Cloud Console lists it as non-sensitive.
+- Token exchange and refresh at `oauth2.googleapis.com/token`, with the client secret (Google requires it
+  even with PKCE). The refresh token is a generic password, "Velum Google Sign-In", keyed by email, in the
+  login Keychain; the access token lives only in memory.
+- `drive/v3/about?fields=user(emailAddress),storageQuota`, about every 30 minutes, and on the next refresh
+  after the panel opens when the figures are over 5 minutes old. A 401 refreshes the token once and retries;
+  a network failure keeps the last figures.
+- `user.emailAddress` must match the row's email (case-insensitive), or the row says so and shows no
+  figures.
+- The switch: UserDefaults `googleSignInAccounts` (lowercased emails).
+
+**Verified live with the owner (November 12).**
+- **`about.get` does return `storageQuota` under `drive.file`.** This was the open question; the scope
+  didn't need widening.
+- The owner signed in through `build/Velum.app/Contents/MacOS/Velum --google-sign-in <email>` and clicked
+  Allow himself.
+- Google answered with his address and limit 429,496,729,600 bytes (400 GiB), used 199,682,857,672
+  (185.97 GiB), Drive 568,993,831. That matches Drive's local cache to the byte.
+- `--google-storage <email>` then fetched again through the Keychain's refresh token, with no Keychain
+  prompt (same signing identity).
+- Tests: 26 for the sign-in, covering token handling with a stubbed network (exchange fields, refresh,
+  `invalid_grant`, a 401 retried once), quota parsing with and without a limit, the email mismatch, "off
+  makes no request" (and no Keychain read), "the cache wins", the menu's rules, and a real loopback
+  round-trip. `Scripts/test.sh`: 80 tests pass.
+- His switch is on and his token is in the Keychain, but his cache has figures, so the sign-in stays idle.
+
+**Google Cloud setup (owner's Gmail, Claude in Chrome, with the owner awake).**
+- Project "Velum" (`velum-514523`), Drive API enabled.
+- Google Auth Platform: External, scope `drive.file`, Desktop client "Velum for macOS". The owner OK'd
+  accepting the Google API Services User Data Policy.
+- **In production.** Google won't publish without a public home page and privacy policy, which is how
+  Valise solved it too. With the owner's OK, `nafatyuk/velum` went **public** after a history scrub (every
+  file in all 8 commits plus messages, against this Mac's Gmail, Apple ID, OneDrive account and org names,
+  Drive's account ID and the account and file names in `--dump`: nothing but the author's name and GitHub
+  handle). The pages live on an orphan `gh-pages` branch, served at <https://nafatyuk.github.io/velum/> and
+  `/privacy.html`; authorized domain `nafatyuk.github.io`. Google's confirmation asked for no verification
+  (no logo, one domain, no sensitive scopes), so sign-ins don't expire after 7 days.
+- The client ID and secret are in `Resources/GoogleOAuthClient.plist` (git-ignored; `build.sh` copies it
+  only if it exists; without it the menu items are hidden). A backup is at
+  `~/Library/Application Support/Velum/GoogleOAuthClient.plist`; Google won't show the secret again.
+
+**Left for later.**
+- **Merging.** This branch carries `main` up to `586f1c7`. After merging, copy
+  `~/Library/Application Support/Velum/GoogleOAuthClient.plist` into `Resources/` before
+  `./build.sh --install`; without it the installed build hides the items.
+- The alert's text and "Remove Google Sign-In" are the session's own wording, in the consult's spirit.
+  Review them with the next consult.
+- `--google-storage <email>` and `--google-sign-out <email>` remain for testing.

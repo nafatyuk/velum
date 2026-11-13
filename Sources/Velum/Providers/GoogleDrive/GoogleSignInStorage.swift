@@ -45,6 +45,8 @@ final class GoogleSignInStorage: @unchecked Sendable {
     private var accounts: [String: Account] = [:]          // by lowercased email
     private var signingIn: [String: LoopbackReceiver] = [:]
     private var panelOpenedAt = Date.distantPast
+    /// When the provider last asked for a note, which it does only while Drive's cache has no figures.
+    private var cacheEmptyAt: [String: Date] = [:]
     /// Called (on any thread) when figures, notes or the menu's state change.
     var onChange: (() -> Void)?
 
@@ -92,16 +94,29 @@ final class GoogleSignInStorage: @unchecked Sendable {
         return figures
     }
 
-    /// What the row should say about the sign-in, when something's wrong with it. Placeholder wording until
-    /// the consultants' answer.
+    /// What the row should say about the sign-in: while it waits for the browser, or when something's wrong
+    /// with it. The provider asks only while Drive's cache has no figures, which also tells the menu whether
+    /// "Show Storage…" would show anything.
     func note(for email: String) -> String? {
-        guard auth != nil, isOn(email) else { return nil }
-        switch lock.withLock({ accounts[Self.key(email)]?.problem }) {
-        case .otherAccount(let other)?: return "Google sign-in is for \(other), not this account"
-        case .signInExpired?: return "Google sign-in expired · sign in again from •••"
-        case .noStorage?: return "Google didn’t share this account’s storage"
+        guard auth != nil else { return nil }
+        let key = Self.key(email)
+        let (signing, problem): (Bool, Problem?) = lock.withLock {
+            cacheEmptyAt[key] = now()
+            return (signingIn[key] != nil, accounts[key]?.problem)
+        }
+        if signing { return "Waiting for Google sign-in…" }
+        guard isOn(email) else { return nil }
+        switch problem {
+        case .otherAccount(let other)?: return "Storage not shown · the Google sign-in is for \(other)"
+        case .signInExpired?: return "Storage not shown · sign in again from the ••• menu"
+        case .noStorage?: return "Storage not shown · Google didn’t share it"
         case nil: return nil
         }
+    }
+
+    /// Drive's own cache had no storage figures on a recent refresh.
+    func cacheLacksFigures(_ email: String) -> Bool {
+        lock.withLock { cacheEmptyAt[Self.key(email)].map { now().timeIntervalSince($0) < 30 } ?? false }
     }
 
     func phase(for email: String) -> Phase {
@@ -305,22 +320,55 @@ extension GoogleSignInStorage {
         }
     }
 
-    /// The ••• menu's action. Turning on closes the panel, since the consent page opens in the browser.
+    /// The ••• menu's action. Turning on closes the panel and says what will happen (Fable: an alert before
+    /// the browser opens), since the consent page opens in the browser.
     @MainActor
     static func set(_ email: String, on: Bool) {
         let shared = Self.shared
-        if on {
-            if shared.phase(for: email) == .signingIn { shared.cancelSignIn(email); return }
-            AppModel.closePanel()
-            Task {
-                do {
-                    try await shared.signIn(email) { NSWorkspace.shared.open($0) }
-                } catch {
-                    NSLog("Velum: Google sign-in didn't finish: \(error)")
-                }
-            }
-        } else {
+        guard on else {
             Task { await shared.turnOff(email) }
+            return
+        }
+        let phase = shared.phase(for: email)
+        if phase == .signingIn {
+            shared.cancelSignIn(email)
+            return
+        }
+        AppModel.closePanel()
+        guard confirm(email, again: phase == .expired) else { return }
+        Task {
+            do {
+                try await shared.signIn(email) { NSWorkspace.shared.open($0) }
+            } catch {
+                NSLog("Velum: Google sign-in didn't finish: \(error)")
+            }
+        }
+    }
+
+    @MainActor
+    private static func confirm(_ email: String, again: Bool) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = again ? "Sign in to Google again?" : "Show storage for \(email)?"
+        alert.informativeText = "Velum will open Google in your browser. Google will ask to let Velum use only "
+            + "the Drive files you use with it; Velum uses none, and reads only how much storage the account "
+            + "has. The sign-in stays in your Keychain, and Stop Showing Storage removes it."
+        alert.addButton(withTitle: "Continue in Browser")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// The row's ••• items (Fable's wording): offered only when Drive's cache has no figures, since that's
+    /// the only time the sign-in shows anything. With the cache showing storage, an existing sign-in can only
+    /// be removed. Each item: its title, and whether it turns the sign-in on.
+    static func menuItems(phase: Phase, cacheLacksFigures: Bool) -> [(title: String, on: Bool)] {
+        switch phase {
+        case .unavailable: return []
+        case .off: return cacheLacksFigures ? [("Show Storage…", true)] : []
+        case .signingIn: return [("Cancel Sign-In", true)]
+        case .expired where cacheLacksFigures: return [("Sign In Again…", true), ("Stop Showing Storage", false)]
+        case .on where cacheLacksFigures: return [("Stop Showing Storage", false)]
+        case .on, .expired: return [("Remove Google Sign-In", false)]
         }
     }
 
@@ -339,8 +387,8 @@ final class GoogleSignInMenu: ObservableObject {
     @Published var revision = 0
 }
 
-/// The sign-in's items in a Google Drive row's ••• menu. Placeholder wording until the consultants' answer;
-/// hidden in a build without an OAuth client.
+/// The sign-in's items in a Google Drive row's ••• menu (see `GoogleSignInStorage.menuItems`); none in a
+/// build without an OAuth client.
 struct GoogleSignInMenuItems: View {
     let config: AccountConfig
     let set: @MainActor (_ email: String, _ on: Bool) -> Void
@@ -348,18 +396,11 @@ struct GoogleSignInMenuItems: View {
 
     var body: some View {
         if let email = GoogleSignInStorage.email(for: config) {
-            switch GoogleSignInStorage.shared.phase(for: email) {
-            case .unavailable:
-                EmptyView()
-            case .off:
-                Button("Show Storage with Google Sign-In…") { set(email, true) }
-            case .signingIn:
-                Button("Cancel Google Sign-In") { set(email, true) }
-            case .expired:
-                Button("Sign In to Google Again…") { set(email, true) }
-                Button("Turn Off Google Sign-In") { set(email, false) }
-            case .on:
-                Button("Turn Off Google Sign-In") { set(email, false) }
+            let shared = GoogleSignInStorage.shared
+            let items = GoogleSignInStorage.menuItems(phase: shared.phase(for: email),
+                                                      cacheLacksFigures: shared.cacheLacksFigures(email))
+            ForEach(items, id: \.title) { item in
+                Button(item.title) { set(email, item.on) }
             }
         }
     }

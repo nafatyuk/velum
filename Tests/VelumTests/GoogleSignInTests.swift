@@ -275,7 +275,7 @@ import Testing
         await storage.fetch(Self.email)
         #expect(storage.storage(for: Self.email) == nil)
         #expect(storage.peek(Self.email) == nil)
-        #expect(storage.note(for: Self.email) == "Google sign-in is for somebody.different@gmail.com, not this account")
+        #expect(storage.note(for: Self.email) == "Storage not shown · the Google sign-in is for somebody.different@gmail.com")
     }
 
     @Test func emailCaseDoesNotMatter() async {
@@ -300,6 +300,31 @@ import Testing
         #expect(revoke.map(Self.form)?["token"] == "saved-refresh")
     }
 
+    @Test func menuOffersOnlyWhatWouldShowSomething() {
+        func titles(_ phase: GoogleSignInStorage.Phase, _ lacking: Bool) -> [String] {
+            GoogleSignInStorage.menuItems(phase: phase, cacheLacksFigures: lacking).map(\.title)
+        }
+        #expect(titles(.unavailable, true) == [])                       // no OAuth client in this build
+        #expect(titles(.off, true) == ["Show Storage…"])
+        #expect(titles(.off, false) == [])                              // the cache already shows storage
+        #expect(titles(.signingIn, true) == ["Cancel Sign-In"])
+        #expect(titles(.on, true) == ["Stop Showing Storage"])
+        #expect(titles(.expired, true) == ["Sign In Again…", "Stop Showing Storage"])
+        #expect(titles(.on, false) == ["Remove Google Sign-In"])        // nothing to stop showing; just remove it
+        #expect(GoogleSignInStorage.menuItems(phase: .off, cacheLacksFigures: true).map(\.on) == [true])
+        #expect(GoogleSignInStorage.menuItems(phase: .on, cacheLacksFigures: true).map(\.on) == [false])
+    }
+
+    @Test func askingForANoteMeansTheCacheIsEmpty() {
+        let clock = Clock()
+        let (storage, _) = Self.make(Self.google(), clock: clock, on: false)
+        #expect(!storage.cacheLacksFigures(Self.email))
+        #expect(storage.note(for: Self.email) == nil)                  // off: no note, but the question counts
+        #expect(storage.cacheLacksFigures(Self.email))
+        clock.now += 60                                                 // the provider stopped asking: cache is back
+        #expect(!storage.cacheLacksFigures(Self.email))
+    }
+
     @Test func emailFromTheAccountKey() {
         let root = URL(fileURLWithPath: "/Users/test/Library/CloudStorage/GoogleDrive-\(Self.email)")
         #expect(GoogleSignInStorage.email(for: GoogleDriveProvider.config(email: Self.email, root: root)) == Self.email)
@@ -316,5 +341,41 @@ import Testing
         try (["ClientID": "id"] as NSDictionary).write(to: half)
         #expect(GoogleOAuthClient.load(contentsOf: good) == GoogleOAuthClient(id: "id", secret: "secret"))
         #expect(GoogleOAuthClient.load(contentsOf: half) == nil)
+    }
+}
+
+/// The provider's side of the seam. Serialized: it sets the provider's shared closures.
+@Suite(.serialized) struct GoogleSignInSeam {
+    final class Counter: @unchecked Sendable { var storage = 0, notes = 0 }
+
+    func withCountingSeam(_ body: (Counter) -> Void) {
+        let counter = Counter()
+        let figures = GoogleStorage(limit: 100, used: 1, usedInDrive: nil, source: .googleSignIn, asOf: Fixture.now)
+        GoogleDriveProvider.signInStorage = { _ in counter.storage += 1; return figures }
+        GoogleDriveProvider.signInNote = { _ in counter.notes += 1; return "a note" }
+        defer {
+            GoogleDriveProvider.signInStorage = { _ in nil }
+            GoogleDriveProvider.signInNote = { _ in nil }
+        }
+        body(counter)
+    }
+
+    @Test func theCacheWinsWhenItHasFigures() {
+        withCountingSeam { counter in
+            let cached = GoogleStorage(limit: 400, used: 186, usedInDrive: nil, source: .driveCache, asOf: Fixture.now)
+            let shown = GoogleDriveProvider.storage(cached: cached, email: "someone.else@gmail.com")
+            #expect(shown.storage == cached)
+            #expect(shown.signInNote == nil)
+            #expect(counter.storage == 0 && counter.notes == 0)       // the sign-in is never asked
+        }
+    }
+
+    @Test func theSignInFillsAnEmptyCache() {
+        withCountingSeam { counter in
+            let shown = GoogleDriveProvider.storage(cached: nil, email: "someone.else@gmail.com")
+            #expect(shown.storage?.source == .googleSignIn)
+            #expect(shown.signInNote == "a note")
+            #expect(counter.storage == 1 && counter.notes == 1)
+        }
     }
 }
