@@ -462,6 +462,9 @@ final class Store: ObservableObject {
 
     var lidVerdict: LidVerdict { snapshot.lidVerdict }
 
+    /// Every file not in the cloud yet, at any age (card A5's sleep guard follows them by path).
+    func pendingFiles() -> PendingList { uploadTracker.pending(olderThan: 0, limit: .max) }
+
     /// For `Velum --render-panel`: shows a snapshot without starting the live sources.
     func show(_ snapshot: Snapshot) {
         self.snapshot = snapshot

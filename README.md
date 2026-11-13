@@ -25,6 +25,9 @@ keeps working.
 - **Stuck files, by name.** Files whose latest change still isn't in the cloud after 10 minutes, or that
   can't upload, are listed under "Not in the cloud yet" with how long they've waited or why they fail.
   Click one to show it in Finder. The stuck alert names the oldest one.
+- **A note after sleep or shutdown.** If files were still on their way up when the Mac slept, Velum says,
+  once you've unlocked, whether they've uploaded since or still haven't. At log out or shut down it warns
+  at once and checks again at the next launch. It never holds up sleep or shutdown.
 - **iCloud Drive too.** Its own row under an iCloud heading, with the same live upload tracking, the
   lid line and alerts covering it, Desktop & Documents included when you sync them, and free iCloud
   storage. iCloud keeps no history Velum can read, so Recent shows the iCloud uploads Velum saw finish.
@@ -211,6 +214,7 @@ Velum alerts you when:
 - files can't upload (with the reason),
 - OneDrive reports a sync issue,
 - uploads have waited more than 10 minutes,
+- files were on their way up as the Mac slept or shut down: one note after it, uploaded since or not yet,
 - OneDrive stops without you quitting it from Velum.
 - a new OneDrive, Google Drive or macOS changes something Velum reads (once per version, without a
   "resolved" note; see [When a sync app updates](#how-velum-knows)).
