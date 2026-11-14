@@ -51,6 +51,13 @@ import Testing
         #expect(s.lidVerdict == .unknown("Velum may have missed recent changes in iCloud Drive"))
     }
 
+    @Test func aFirstLookSaysSoInsteadOfMissed() {
+        var looking = account(Fixture.iCloud(), covered: false)
+        looking.firstLook = true
+        let s = snapshot([account(Fixture.oneDrive()), looking], providers: [oneDriveRunning, iCloudOn])
+        #expect(s.lidVerdict == .unknown("Velum is still looking through iCloud Drive for the first time"))
+    }
+
     @Test func noAccountsKeepsTheOldWording() {
         #expect(snapshot([], providers: [oneDriveRunning]).lidVerdict == .unknown("No OneDrive accounts found"))
         #expect(snapshot([], providers: []).lidVerdict == .unknown("No cloud accounts found"))

@@ -49,6 +49,8 @@ struct AccountStatus: Identifiable, Equatable {
     var oldestWaiting: Date?
     /// Velum is watching this account's folders with no known gaps, so the counts above are complete.
     var uploadsCovered = false
+    /// Not covered only because Velum is taking its first look at the folders (nothing was missed).
+    var firstLook = false
     /// Work in flight that isn't a counted file: the provider's own queue, or transfers with no direction.
     var workPending = false
     /// Since when the provider's own queue has held work.
@@ -132,6 +134,8 @@ struct Snapshot: Equatable {
         if let busy = accounts.first(where: \.workPending) { return .busy(busy.name) }
         if let reason = providers.lazy.compactMap({ $0.compatibility?.lidReason }).first { return .unknown(reason) }   // A7
         if let blind = accounts.first(where: { !$0.uploadsCovered }) {
+            // A first look missed nothing; it hasn't finished looking yet.
+            if blind.firstLook { return .unknown("Velum is still looking through \(blind.name) for the first time") }
             return .unknown("Velum may have missed recent changes in \(blind.name)")
         }
         if let beta = GenericText.lid(accounts) { return .unknown(beta) }   // C3: unconfirmed flags never make "safe"
@@ -357,6 +361,7 @@ final class Collector: @unchecked Sendable {
         status.firstFailure = failed.first
         status.oldestWaiting = uploads?.oldestWaiting
         status.uploadsCovered = account.running && watchingUploads && uploads?.coverageGap != true
+        status.firstLook = uploads?.coverageGap == true && uploads?.coverageFirstLook == true
         status.workPending = account.running && working
         status.workingSince = working ? account.workingSince : nil
         status.age = age

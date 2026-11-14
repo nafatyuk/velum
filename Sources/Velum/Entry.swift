@@ -195,6 +195,7 @@ private extension AccountStatus {
         var s = AccountStatus(config: config, name: "\(name) \(suffix)", state: state, headline: headline, detail: detail,
                               notes: notes, source: source, pid: pid, isLive: isLive, lastActivity: lastActivity)
         s.uploadsCovered = uploadsCovered
+        s.firstLook = firstLook
         return s
     }
 }
