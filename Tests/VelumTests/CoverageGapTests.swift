@@ -38,9 +38,13 @@ private final class Sandbox: @unchecked Sendable {
         return url
     }
 
-    /// A tracker watching the sandbox folder. Files without an answer read as uploaded.
+    /// A tracker watching the sandbox folder. Files without an answer read as uploaded. Unless `firstLook`, the
+    /// folder counts as already looked through, so the only gaps are the ones a test makes.
     func tracker(_ answers: [String: UploadTracker.Outcome] = [:], fallback: UploadTracker.Outcome = .uploaded,
-                 during: (@Sendable (String) -> Void)? = nil) -> UploadTracker {
+                 firstLook: Bool = false, during: (@Sendable (String) -> Void)? = nil) -> UploadTracker {
+        if !firstLook, defaults.object(forKey: "coverageLooked") == nil {
+            defaults.set([Self.account: [folder.path]], forKey: "coverageLooked")
+        }
         // Holds the sandbox, so its folder lasts as long as the tracker walking it.
         let tracker = UploadTracker(defaults: defaults) { [self] path in
             let name = (path as NSString).lastPathComponent
@@ -273,6 +277,96 @@ private extension UploadTracker {
         #expect(tracker.account(at: 0)?.coverageGap == true)
         _ = tracker.account(at: 10)
         #expect(tracker.account(at: 11)?.coverageGap == false)
+    }
+}
+
+/// FSEvents only reports changes, so a file already stuck before Velum watched would never show up: a folder no
+/// re-check has walked yet starts with a gap, Velum's first look.
+@Suite struct CoverageFirstLook {
+    @Test func aFolderNeverLookedThroughIsLookedThroughBeforeVouching() throws {
+        let box = Sandbox()
+        box.file("stuck-before-velum.txt")
+        box.file("in-the-cloud.txt")
+        let tracker = box.tracker(["stuck-before-velum.txt": .pending(.waiting)], firstLook: true)
+
+        // Watching alone, with nothing lost: no vouching yet, and the reason says it's a first look, not a loss.
+        let first = try #require(tracker.account(at: 0))
+        #expect(first.coverageGap)
+        #expect(first.coverageFirstLook)
+        #expect(first.coverageCheck == .checking)
+        let status = Fixture.status(Fixture.evidence(Fixture.oneDrive(), report: Fixture.report(.ok, "Up to date")), uploads: first)
+        #expect(!status.uploadsCovered)
+        #expect(status.reason == "Velum is looking through these folders for the first time before it vouches for them.")
+
+        _ = tracker.account(at: 10)
+        let after = tracker.account(at: 11)
+        #expect(after?.coverageGap == false)
+        #expect(after?.coverageFirstLook == false)
+        #expect(tracker.pending(olderThan: 0).files.map(\.name) == ["stuck-before-velum.txt"])
+
+        // Looked through for good: the next launch vouches without another walk.
+        let asked = box.asked.names.count
+        let next = box.tracker(firstLook: true)
+        #expect(next.account(at: 0)?.coverageGap == false)
+        _ = next.account(at: 10)
+        #expect(box.asked.names.count == asked)
+    }
+
+    @Test func aFolderAddedToAnAccountGetsItsOwnLook() {
+        let box = Sandbox()
+        box.file("Documents/notes.txt")
+        let documents = box.folder.appending(path: "Documents")
+        let tracker = box.tracker()
+        #expect(tracker.account(at: 0)?.coverageGap == false)
+
+        // Desktop & Documents turned on: iCloud's account gains a folder no re-check has walked.
+        tracker.adopt([Sandbox.account: [box.folder, documents]])
+        #expect(tracker.account(at: 0)?.coverageFirstLook == true)
+        _ = tracker.account(at: 10)
+        #expect(tracker.account(at: 11)?.coverageGap == false)
+        tracker.adopt([Sandbox.account: [box.folder, documents]])
+        #expect(tracker.account(at: 12)?.coverageGap == false)
+    }
+
+    @Test func refreshesDuringTheFirstLookDontRestartIt() {
+        let box = Sandbox()
+        box.file("a.txt")
+        let holder = Holder()
+        let tracker = box.tracker(firstLook: true, during: { _ in
+            // The app re-adopts its folders on every refresh, including while the look is walking.
+            holder.takeOnce()?.adopt([Sandbox.account: [box.folder]])
+        })
+        holder.tracker = tracker
+        _ = tracker.account(at: 10)
+        #expect(tracker.account(at: 11)?.coverageGap == false)
+    }
+
+    @Test func aLossDuringTheFirstLookStillNeedsAnother() {
+        let box = Sandbox()
+        box.file("a.txt")
+        let holder = Holder()
+        let tracker = box.tracker(firstLook: true, during: { _ in
+            if let t = holder.takeOnce() { t.loseEvents(in: box.folder) }
+        })
+        holder.tracker = tracker
+        _ = tracker.account(at: 10)
+        #expect(tracker.account(at: 11)?.coverageGap == true)
+        #expect(tracker.account(at: 12)?.coverageGap == false)
+    }
+
+    @Test func aFirstLookThatCantFinishSaysSo() {
+        let retry = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(Reasons.coverageGap(since: nil, check: .failed(.tooManyFiles(500_000), retry: retry), firstLook: true)
+                == "Velum couldn’t look through these folders yet: they hold more than 500,000 files. It tries again at \(RelTime.clock(retry)).")
+
+        let box = Sandbox()
+        for i in 1...3 { box.file("file\(i).txt") }
+        let tracker = box.tracker(firstLook: true)
+        tracker.recheckLimit = 2
+        _ = tracker.account(at: 10)
+        let after = tracker.account(at: 11)
+        #expect(after?.coverageFirstLook == true)
+        #expect(after?.coverageCheck.map { if case .failed(.tooManyFiles(2), _) = $0 { true } else { false } } == true)
     }
 }
 

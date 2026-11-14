@@ -38,7 +38,14 @@ enum Reasons {
     /// FSEvents dropped events, or Velum was off too long to replay them, so "nothing pending" isn't proof.
     /// It says what ends the gap: the tracker's re-check of the account's folders, never a timer. While the
     /// re-check runs it promises no time, because how long it takes depends on how many files there are.
-    static func coverageGap(since: Date?, check: CoverageCheck?) -> String {
+    /// A first look (folders no re-check has walked yet) says so instead: Velum didn't miss anything there.
+    static func coverageGap(since: Date?, check: CoverageCheck?, firstLook: Bool = false) -> String {
+        if firstLook {
+            if case .failed(let why, let retry) = check {
+                return "Velum couldn’t look through these folders yet: \(recheckFailure(why)). It tries again at \(RelTime.clock(retry))."
+            }
+            return "Velum is looking through these folders for the first time before it vouches for them."
+        }
         let missed = "Velum may have missed changes here" + (since.map { " around \(RelTime.clock($0))" } ?? "")
         switch check {
         case .failed(let why, let retry):

@@ -14,6 +14,9 @@ struct UploadSummary: Equatable {
     var coverageGapSince: Date?
     /// What ends the gap: the re-check, under way or failed.
     var coverageCheck: CoverageCheck?
+    /// The gap is Velum's first look: no re-check has finished walking all of the account's folders yet (a new
+    /// install, an install from before re-checks, a newly added folder), so files already stuck are unknown.
+    var coverageFirstLook = false
 }
 
 /// The re-check that ends a coverage gap: a walk of the account's folders asking File Provider about every file.
@@ -79,9 +82,11 @@ struct PendingList: Equatable {
 ///
 /// When FSEvents may have missed changes, the account has a coverage gap, and Velum can't vouch for "nothing
 /// pending" until a re-check has walked its folders and fed every file File Provider says isn't in the cloud
-/// into the pending files. Only a finished re-check ends a gap; no timer does.
+/// into the pending files. Only a finished re-check ends a gap; no timer does. FSEvents only reports changes, so
+/// a folder no re-check has walked yet starts with a gap too: Velum's first look at it.
 ///
-/// Pending files, open gaps and the FSEvents resume point are saved, so a quit or restart doesn't lose track.
+/// Pending files, open gaps, the folders already looked through and the FSEvents resume point are saved, so a
+/// quit or restart doesn't lose track.
 final class UploadTracker: @unchecked Sendable {
     private final class Stream {
         let key: String
@@ -148,7 +153,9 @@ final class UploadTracker: @unchecked Sendable {
     private var watching: Set<String> = []
     private var roots: [String: [URL]] = [:]
     private var gaps: [String: Gap] = [:]
-    private var gapsDirty = false
+    /// Per account, the folders the last finished re-check walked. A watched folder not in it gets a first look.
+    private var looked: [String: Set<String>] = [:]
+    private var gapsDirty = false       // gaps or looked
     private var rechecking = false
     private var dirty = false
     private var completedDirty = false
@@ -164,6 +171,7 @@ final class UploadTracker: @unchecked Sendable {
     private let pendingKey = "pendingUploads"
     private let completedKey = "recentUploads"
     private let gapsKey = "coverageGaps"
+    private let lookedKey = "coverageLooked"
     private let completedLimit = 30
     private let inspectBudget = 400                 // File Provider lookups per refresh (each takes about 3 ms)
     private let maxReplay: TimeInterval = 86_400    // don't replay more than a day of change history
@@ -204,6 +212,9 @@ final class UploadTracker: @unchecked Sendable {
             let due = Date().addingTimeInterval(recheckSettle)
             gaps = saved.mapValues { Gap(since: $0, check: .due(due)) }
         }
+        if let saved = defaults.dictionary(forKey: lookedKey) as? [String: [String]] {
+            looked = saved.mapValues(Set.init)
+        }
     }
 
     deinit {
@@ -231,6 +242,10 @@ final class UploadTracker: @unchecked Sendable {
     /// Takes the accounts now watched and their folders (which a re-check walks). Internal (not private) so tests
     /// can watch made-up folders without FSEvents. Gaps of accounts no longer watched are kept: if the account
     /// comes back, its resume point is already past the lost events, so it still needs its re-check.
+    ///
+    /// An account with a folder no re-check has walked yet gets a gap, Velum's first look: FSEvents only reports
+    /// changes, so a file already stuck before Velum watched would never show up. Called on every refresh; an
+    /// open gap is left alone, so this never restarts a look under way.
     func adopt(_ roots: [String: [URL]], recordingUploadsFor: Set<String> = []) {
         let keys = Set(roots.keys)
         lock.lock()
@@ -238,7 +253,18 @@ final class UploadTracker: @unchecked Sendable {
         self.roots = roots
         recordUploads = recordingUploadsFor
         candidates = candidates.filter { keys.contains($0.value.account) }
+        let firstLooks = roots.filter { gaps[$0.key] == nil && !isLooked($0.key) }.keys.sorted()
+        let now = Date()
+        for account in firstLooks { markGap(account, now: now) }
         lock.unlock()
+        for account in firstLooks {
+            debugLog("tracker", "\(account): no re-check has walked all its folders yet; looking through them before vouching")
+        }
+    }
+
+    /// Whether a finished re-check has walked every folder the account is watched by. Lock held.
+    private func isLooked(_ account: String) -> Bool {
+        Set((roots[account] ?? []).map(\.path)).isSubset(of: looked[account] ?? [])
     }
 
     private func start(_ stream: Stream) -> Bool {
@@ -451,6 +477,7 @@ final class UploadTracker: @unchecked Sendable {
         for (account, gap) in gaps where summaries[account] != nil {
             summaries[account]?.coverageGap = true
             summaries[account]?.coverageGapSince = gap.since
+            summaries[account]?.coverageFirstLook = !isLooked(account)
             if case .failed(let why, let retry) = gap.check, retry > now {
                 summaries[account]?.coverageCheck = .failed(why, retry: retry)
             } else {
@@ -519,6 +546,7 @@ final class UploadTracker: @unchecked Sendable {
             line = "re-check ended (\(counts)); the gap was already gone"
         case (.finished, let gap?) where gap.generation == generation && roots[account] == folders:
             gaps[account] = nil
+            looked[account] = Set(folders.map(\.path))
             gapsDirty = true
             line = "re-check finished (\(counts)); the gap is closed"
         case (.failed(let why), var gap?):
@@ -729,6 +757,7 @@ final class UploadTracker: @unchecked Sendable {
         let pendingData = dirty ? try? JSONEncoder().encode(candidates) : nil
         let completedData = completedDirty ? try? JSONEncoder().encode(completed) : nil
         let openGaps = gapsDirty ? gaps.mapValues(\.since) : nil
+        let lookedFolders = gapsDirty ? looked.mapValues { $0.sorted() } : nil
         let wrotePending = dirty, wroteCompleted = completedDirty
         dirty = false
         completedDirty = false
@@ -737,5 +766,6 @@ final class UploadTracker: @unchecked Sendable {
         if wrotePending { defaults.set(pendingData, forKey: pendingKey) }
         if wroteCompleted { defaults.set(completedData, forKey: completedKey) }
         if let openGaps { defaults.set(openGaps, forKey: gapsKey) }
+        if let lookedFolders { defaults.set(lookedFolders, forKey: lookedKey) }
     }
 }
