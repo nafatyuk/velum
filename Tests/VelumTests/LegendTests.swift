@@ -246,8 +246,8 @@ private func clock(_ offset: TimeInterval) -> String { RelTime.clock(Fixture.now
                 == "Velum may have missed changes here, so it’s re-checking these folders before it vouches for them again.")
         // A re-check that couldn't finish says why, and when it runs again.
         let retry = Fixture.now.addingTimeInterval(30 * minute)
-        #expect(Reasons.coverageGap(since: since, check: .failed(.tooManyFiles(100_000), retry: retry))
-                == "Velum may have missed changes here around \(clock(-6 * minute)) and couldn’t re-check these folders: they hold more than \(100_000.formatted()) files. It tries again at \(clock(30 * minute)).")
+        #expect(Reasons.coverageGap(since: since, check: .failed(.tooManyFiles(500_000), retry: retry))
+                == "Velum may have missed changes here around \(clock(-6 * minute)) and couldn’t re-check these folders: they hold more than \(500_000.formatted()) files. It tries again at \(clock(30 * minute)).")
         #expect(Reasons.coverageGap(since: since, check: .failed(.unreadable, retry: retry))
                 == "Velum may have missed changes here around \(clock(-6 * minute)) and couldn’t re-check these folders: a folder couldn’t be read. It tries again at \(clock(30 * minute)).")
         #expect(Reasons.recheckFailure(.tooManyPending(5000)) == "more than \(5000.formatted()) files are waiting to upload")

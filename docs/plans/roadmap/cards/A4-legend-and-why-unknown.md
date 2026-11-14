@@ -102,7 +102,7 @@ _Built November 13, 2026, in its own worktree (branch `claude/a4-legend-8be7c5`,
 | iCloud, check failed | "iCloud didn't answer the 2:45 PM check. Velum tries again at 2:55 PM." |
 | iCloud, old | "iCloud's last answer, at 2:15 PM, is 40 minutes old; it hasn't answered since. …" The "hasn't answered" part appears only after a failed check, since after sleep none may have run. |
 | Google Drive, queue unreadable | "Velum can't read Google Drive's queue on this version. Per-file status from macOS still works." |
-| Coverage gap (any service) | "Velum may have missed changes here around 1:25 PM, so it's re-checking these folders before it vouches for them again." If the re-check can't finish: "… and couldn't re-check these folders: they hold more than 100,000 files. It tries again at 1:55 PM." It shows under green rows too, because the lid line blames that account. (Wording changed November 13, with the re-check.) |
+| Coverage gap (any service) | "Velum may have missed changes here around 1:25 PM, so it's re-checking these folders before it vouches for them again." If the re-check can't finish: "… and couldn't re-check these folders: they hold more than 500,000 files. It tries again at 1:55 PM." It shows under green rows too, because the lid line blames that account. (Wording changed November 13, with the re-check.) |
 | Not watching yet | "Velum has just started watching this account and can't vouch for it yet." |
 | Future-dated report | "The last OneDrive report is dated 3:45 AM, later than this Mac's clock. Velum waits for the next one." |
 

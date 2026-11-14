@@ -172,8 +172,10 @@ final class UploadTracker: @unchecked Sendable {
     private let recheckRetry: TimeInterval = 30 * 60
     // Internal (not private) so tests can lower them:
     var maxCandidates = 5000
-    /// File Provider lookups one re-check may make, about 10 minutes' worth at its pace. Past it the gap stays.
-    var recheckLimit = 100_000
+    /// File Provider lookups one re-check may make. Past it the gap stays. Measured November 13: an iCloud Drive
+    /// with Desktop and Documents took about 78,000 lookups in 12 minutes at the walk's pace, so this is room
+    /// for about 6 times that, a little over an hour in the background.
+    var recheckLimit = 500_000
     /// Tests run re-checks synchronously, on the thread that calls `summary`.
     var rechecksInline = false
 
